@@ -1133,14 +1133,14 @@ with st.sidebar:
             st.markdown(f'<div style="font-size:0.68rem;color:#F0F2F8;padding:3px 0">&#128196; {f.name}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown('<div style="font-size:0.62rem;color:#6B7280">modo de analise</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.62rem;color:#6B7280">MODO DE ANALISE</div>', unsafe_allow_html=True)
     mode = st.radio("", ["Por estacao (individual)", "Consolidado (todos os arquivos)"],
                     label_visibility="collapsed")
 
     anon = False
     if uploaded_files:
         st.markdown("---")
-        anon = st.toggle("Anonimizar nomes (A, B, C...)", value=False)
+        anon = st.toggle("Anonimizar (A, B, C...)", value=False)
 
     st.markdown("---")
     st.markdown('<div style="font-size:0.62rem;color:#6B7280;margin-bottom:0.5rem">PARAMETROS DE CUSTO</div>', unsafe_allow_html=True)
