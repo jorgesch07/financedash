@@ -158,7 +158,7 @@ components.html("""
 components.html("""
 <script>
 (function() {
-    var LOGO_URL = 'https://github.com/jorgesch07/financedash/blob/main/Logomarca_Intelbras_verde%20(1).png';
+    var LOGO_URL = 'https://upload.wikimedia.org/wikipedia/commons/2/2b/Logomarca_Intelbras_verde.png';
 
     function buildTopbar() {
         var pdoc = window.parent.document;
