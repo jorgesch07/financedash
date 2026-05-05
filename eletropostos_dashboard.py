@@ -1119,7 +1119,7 @@ def build_dre_table(df, custo_kwh, custo_pct):
     return weekly
 
 
-
+def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct, anon):
     """Renderiza todos os KPIs e graficos — identico para modo individual e consolidado."""
 
     # ── ROW 1: 4 cards principais ─────────────────────────────────────────────
