@@ -158,7 +158,7 @@ components.html("""
 components.html("""
 <script>
 (function() {
-    var LOGO_URL = 'Logomarca_Intelbras_verde (1).png';
+    var LOGO_URL = '/Logomarca_Intelbras_verde%20(1).png';
 
     function buildTopbar() {
         var pdoc = window.parent.document;
