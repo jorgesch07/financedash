@@ -153,7 +153,104 @@ components.html("""
 """, height=0)
 
 
-# ─── HELPERS ──────────────────────────────────────────────────────────────────
+# ─── TOPBAR ───────────────────────────────────────────────────────────────────
+# Injetada no documento pai via components.html (st.markdown usa iframe)
+components.html("""
+<script>
+(function() {
+    var LOGO_URL = 'https://upload.wikimedia.org/wikipedia/commons/2/2b/Logomarca_Intelbras_verde.png';
+
+    function buildTopbar() {
+        var pdoc = window.parent.document;
+        if (pdoc.getElementById('ib-topbar')) return;
+
+        // Estilos injetados no <head> do pai
+        var style = pdoc.createElement('style');
+        style.textContent = [
+            '#ib-topbar{position:fixed;top:0;left:0;right:0;z-index:99998;height:52px;',
+            'background:#0A0C10;border-bottom:1px solid #1E2330;',
+            'display:flex;align-items:center;padding:0 24px 0 66px;gap:14px;font-family:monospace;}',
+            '#ib-topbar-label{font-size:10px;color:#6B7280;letter-spacing:.08em;white-space:nowrap;text-transform:uppercase;}',
+            '#ib-connector-select{background:#13161D;border:1px solid #1E2330;border-radius:6px;',
+            'color:#F0F2F8;font-size:11px;font-family:monospace;padding:5px 12px;cursor:pointer;min-width:200px;}',
+            '#ib-connector-select:focus{outline:none;border-color:#00C9A7;}',
+            '#ib-topbar-logo{height:26px;width:auto;object-fit:contain;margin-left:auto;}'
+        ].join('');
+        pdoc.head.appendChild(style);
+
+        // Padding extra no conteúdo principal para não ficar atrás da barra
+        var pstyle = pdoc.createElement('style');
+        pstyle.textContent = '.block-container{padding-top:4.5rem !important;}';
+        pdoc.head.appendChild(pstyle);
+
+        // Monta a barra
+        var bar = pdoc.createElement('div');
+        bar.id = 'ib-topbar';
+
+        var label = pdoc.createElement('span');
+        label.id = 'ib-topbar-label';
+        label.textContent = 'Conector';
+
+        var sel = pdoc.createElement('select');
+        sel.id = 'ib-connector-select';
+        var opt0 = pdoc.createElement('option');
+        opt0.value = ''; opt0.textContent = 'Todos os conectores';
+        sel.appendChild(opt0);
+        sel.addEventListener('change', function() {
+            // Atualiza o query param e força reload do Streamlit
+            var url = new URL(window.parent.location.href);
+            if (this.value) {
+                url.searchParams.set('connector', this.value);
+            } else {
+                url.searchParams.delete('connector');
+            }
+            window.parent.location.href = url.toString();
+        });
+
+        var logo = pdoc.createElement('img');
+        logo.id = 'ib-topbar-logo';
+        logo.src = LOGO_URL;
+        logo.alt = 'Intelbras';
+
+        bar.appendChild(label);
+        bar.appendChild(sel);
+        bar.appendChild(logo);
+        pdoc.body.prepend(bar);
+    }
+
+    function populateOptions() {
+        var pdoc = window.parent.document;
+        var sel = pdoc.getElementById('ib-connector-select');
+        if (!sel) { setTimeout(populateOptions, 500); return; }
+        var opts = window.parent.__ib_connectors || [];
+        // Remove antigas (exceto "Todos")
+        while (sel.options.length > 1) sel.remove(1);
+        opts.forEach(function(c) {
+            var o = pdoc.createElement('option');
+            o.value = c; o.textContent = c;
+            sel.appendChild(o);
+        });
+        // Restaura seleção atual da URL
+        var url = new URL(window.parent.location.href);
+        var cur = url.searchParams.get('connector') || '';
+        sel.value = cur;
+    }
+
+    buildTopbar();
+    setTimeout(populateOptions, 600);
+    setTimeout(populateOptions, 1500);
+
+    // Re-injeta se o Streamlit re-renderizar o body
+    var obs = new MutationObserver(function() {
+        if (!window.parent.document.getElementById('ib-topbar')) buildTopbar();
+        populateOptions();
+    });
+    try { obs.observe(window.parent.document.body, { childList: true }); } catch(e) {}
+})();
+</script>
+""", height=0)
+
+
 def parse_start_date(s):
     if pd.isna(s): return pd.NaT
     s = str(s).strip()
@@ -1115,7 +1212,8 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 with st.sidebar:
     st.markdown(
         '<div style="padding:1rem 0 1.5rem">'
-        '<div style="font-size:1.3rem;font-weight:800;color:#00C9A7">Análise financeira</div>'
+        '<div style="font-size:1.3rem;font-weight:800;color:#00C9A7">&#9889; eletropostos</div>'
+        '<div style="font-size:0.62rem;color:#6B7280;margin-top:2px">dashboard financeiro</div>'
         '</div>',
         unsafe_allow_html=True
     )
@@ -1133,14 +1231,14 @@ with st.sidebar:
             st.markdown(f'<div style="font-size:0.68rem;color:#F0F2F8;padding:3px 0">&#128196; {f.name}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown('<div style="font-size:0.62rem;color:#6B7280">MODO DE ANALISE</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.62rem;color:#6B7280">modo de analise</div>', unsafe_allow_html=True)
     mode = st.radio("", ["Por estacao (individual)", "Consolidado (todos os arquivos)"],
                     label_visibility="collapsed")
 
     anon = False
     if uploaded_files:
         st.markdown("---")
-        anon = st.toggle("Anonimizar (A, B, C...)", value=False)
+        anon = st.toggle("Anonimizar nomes (A, B, C...)", value=False)
 
     st.markdown("---")
     st.markdown('<div style="font-size:0.62rem;color:#6B7280;margin-bottom:0.5rem">PARAMETROS DE CUSTO</div>', unsafe_allow_html=True)
@@ -1151,7 +1249,7 @@ with st.sidebar:
 st.markdown(
     '<div style="margin-bottom:1.5rem">'
     '<div class="page-title">Dashboard <span style="color:#00C9A7">Financeiro</span></div>'
-    '<div class="page-subtitle">Desempenho &middot; Analise financeira</div>'
+    '<div class="page-subtitle">Rede de Eletropostos &middot; Analise de transacoes</div>'
     '</div>',
     unsafe_allow_html=True
 )
@@ -1205,6 +1303,45 @@ if anon:
     dfs = new_dfs
 
 df_all = pd.concat(dfs.values(), ignore_index=True)
+
+# ─── FILTRO DE CONECTOR ───────────────────────────────────────────────────────
+_col_conn = 'Conector(Tipo)' if 'Conector(Tipo)' in df_all.columns else None
+_connector_options = sorted(df_all[_col_conn].dropna().unique().tolist()) if _col_conn else []
+
+# Injeta lista de conectores no window.parent para o select da topbar
+import json as _json
+_opts_json = _json.dumps(_connector_options)
+components.html(f"""
+<script>
+(function() {{
+    window.parent.__ib_connectors = {_opts_json};
+    var pdoc = window.parent.document;
+    var sel = pdoc.getElementById('ib-connector-select');
+    if (!sel) return;
+    while (sel.options.length > 1) sel.remove(1);
+    {_opts_json}.forEach(function(c) {{
+        var o = pdoc.createElement('option');
+        o.value = c; o.textContent = c;
+        sel.appendChild(o);
+    }});
+    // Restaura valor atual da URL
+    var url = new URL(window.parent.location.href);
+    var cur = url.searchParams.get('connector') || '';
+    if (cur) sel.value = cur;
+}})();
+</script>
+""", height=0)
+
+# Lê filtro selecionado via query_params do Streamlit
+_selected_connector = st.query_params.get("connector", "")
+
+# Aplica o filtro em df_all e em cada df dos dfs
+if _selected_connector and _col_conn:
+    df_all = df_all[df_all[_col_conn] == _selected_connector]
+    dfs = {
+        k: v[v[_col_conn] == _selected_connector] if _col_conn in v.columns else v
+        for k, v in dfs.items()
+    }
 
 # ─── CONSOLIDATED VIEW ────────────────────────────────────────────────────────
 if mode == "Consolidado (todos os arquivos)" or len(dfs) == 1:
