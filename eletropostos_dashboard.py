@@ -1313,78 +1313,75 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
             })
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
-    # ── DRE SEMANAL ───────────────────────────────────────────────────────────
+    # ── DRE SEMANAL (transposta: indicadores=linhas, semanas=colunas) ────────────
     section("DRE — Demonstrativo de Resultado por Semana")
     dre = build_dre_table(df, custo_kwh, custo_pct)
     if len(dre) == 0:
         st.caption("Dados insuficientes para gerar a DRE.")
     else:
-        # Linha de TOTAL
-        total_row = {
-            'Semana': 'TOTAL',
-            'Sessoes Pagas': f"{dre['sessoes'].sum():,}",
-            'kWh Entregues': f"{dre['kwh'].sum():,.1f}",
+        semana_cols = [f"Sem {int(w)}" for w in dre['semana']]
+
+        total_vals = {
+            'Sessoes Pagas':     f"{int(dre['sessoes'].sum()):,}",
+            'kWh Entregues':     f"{dre['kwh'].sum():,.1f}",
             'R$ Inicio Recarga': f"R$ {dre['r_inicio'].sum():,.2f}",
-            'R$ Energia (kWh)': f"R$ {dre['r_kwh_rec'].sum():,.2f}",
-            'R$ Ociosidade': f"R$ {dre['r_ocio'].sum():,.2f}",
-            'RECEITA TOTAL': f"R$ {dre['receita_total'].sum():,.2f}",
+            'R$ Energia (kWh)':  f"R$ {dre['r_kwh_rec'].sum():,.2f}",
+            'R$ Ociosidade':     f"R$ {dre['r_ocio'].sum():,.2f}",
+            'RECEITA TOTAL':     f"R$ {dre['receita_total'].sum():,.2f}",
             '(-) Custo Energia': f"R$ {dre['custo_energia'].sum():,.2f}",
             '(-) Custo Operac.': f"R$ {dre['custo_operacional'].sum():,.2f}",
-            '(=) LUCRO BRUTO': f"R$ {dre['lucro_bruto'].sum():,.2f}",
-            'Margem (%)': f"{dre['lucro_bruto'].sum()/dre['receita_total'].sum()*100:.1f}%" if dre['receita_total'].sum() else '–',
+            '(=) LUCRO BRUTO':   f"R$ {dre['lucro_bruto'].sum():,.2f}",
+            'Margem (%)':        (f"{dre['lucro_bruto'].sum()/dre['receita_total'].sum()*100:.1f}%"
+                                  if dre['receita_total'].sum() else '–'),
         }
-        dre_display = []
-        for _, row in dre.iterrows():
-            dre_display.append({
-                'Semana': f"Semana {int(row['semana'])}",
-                'Sessoes Pagas': f"{int(row['sessoes']):,}",
-                'kWh Entregues': f"{row['kwh']:,.1f}",
-                'R$ Inicio Recarga': f"R$ {row['r_inicio']:,.2f}",
-                'R$ Energia (kWh)': f"R$ {row['r_kwh_rec']:,.2f}",
-                'R$ Ociosidade': f"R$ {row['r_ocio']:,.2f}",
-                'RECEITA TOTAL': f"R$ {row['receita_total']:,.2f}",
-                '(-) Custo Energia': f"R$ {row['custo_energia']:,.2f}",
-                '(-) Custo Operac.': f"R$ {row['custo_operacional']:,.2f}",
-                '(=) LUCRO BRUTO': f"R$ {row['lucro_bruto']:,.2f}",
-                'Margem (%)': f"{row['margem']:.1f}%",
-            })
-        dre_display.append(total_row)
-        dre_df = pd.DataFrame(dre_display)
 
-        # Renderiza com destaque na linha TOTAL e na coluna LUCRO
+        indicadores = [
+            ('Sessoes Pagas',     [f"{int(r['sessoes']):,}"           for _,r in dre.iterrows()], ''),
+            ('kWh Entregues',     [f"{r['kwh']:,.1f}"                  for _,r in dre.iterrows()], ''),
+            ('R$ Inicio Recarga', [f"R$ {r['r_inicio']:,.2f}"          for _,r in dre.iterrows()], ''),
+            ('R$ Energia (kWh)',  [f"R$ {r['r_kwh_rec']:,.2f}"         for _,r in dre.iterrows()], ''),
+            ('R$ Ociosidade',     [f"R$ {r['r_ocio']:,.2f}"            for _,r in dre.iterrows()], ''),
+            ('RECEITA TOTAL',     [f"R$ {r['receita_total']:,.2f}"     for _,r in dre.iterrows()], 'receita'),
+            ('(-) Custo Energia', [f"R$ {r['custo_energia']:,.2f}"     for _,r in dre.iterrows()], 'custo'),
+            ('(-) Custo Operac.', [f"R$ {r['custo_operacional']:,.2f}" for _,r in dre.iterrows()], 'custo'),
+            ('(=) LUCRO BRUTO',   [f"R$ {r['lucro_bruto']:,.2f}"       for _,r in dre.iterrows()], 'lucro'),
+            ('Margem (%)',        [f"{r['margem']:.1f}%"               for _,r in dre.iterrows()], 'lucro'),
+        ]
+
         st.markdown("""
         <style>
-        .dre-table { width:100%; border-collapse:collapse; font-size:0.72rem; font-family:monospace; }
-        .dre-table th { background:#1E2330; color:#6B7280; text-transform:uppercase;
-                        letter-spacing:.06em; padding:6px 10px; text-align:right; border-bottom:1px solid #2D3340; }
-        .dre-table th:first-child { text-align:left; }
-        .dre-table td { padding:5px 10px; border-bottom:1px solid #1A1C24; color:#F0F2F8;
-                        text-align:right; }
-        .dre-table td:first-child { text-align:left; color:#9CA3AF; }
-        .dre-table tr:last-child td { background:#13161D; font-weight:700;
-                                       border-top:2px solid #2D3340; color:#F0F2F8; }
-        .dre-table tr:last-child td:first-child { color:#00C9A7; }
-        .dre-table .lucro { color:#00C9A7 !important; font-weight:600; }
-        .dre-table .custo { color:#FF6B6B !important; }
-        .dre-table tr:hover td { background:#13161D; }
+        .dre-t{width:100%;border-collapse:collapse;font-size:0.72rem;font-family:monospace;}
+        .dre-t th{background:#1E2330;color:#6B7280;text-transform:uppercase;
+                  letter-spacing:.06em;padding:7px 14px;text-align:right;
+                  border-bottom:1px solid #2D3340;white-space:nowrap;}
+        .dre-t th:first-child{text-align:left;min-width:170px;}
+        .dre-t td{padding:5px 14px;border-bottom:1px solid #1A1C24;
+                  color:#F0F2F8;text-align:right;white-space:nowrap;}
+        .dre-t td:first-child{text-align:left;color:#9CA3AF;font-weight:500;}
+        .dre-t .tc{background:#13161D!important;font-weight:700;
+                   border-left:1px solid #2D3340;}
+        .dre-t .row-receita td{background:rgba(0,201,167,0.04);}
+        .dre-t .row-receita td:first-child{color:#F0F2F8;font-weight:700;}
+        .dre-t .row-lucro td{background:rgba(0,201,167,0.07);}
+        .dre-t .row-lucro td:first-child,.dre-t .row-lucro .tc{color:#00C9A7;font-weight:700;}
+        .dre-t .row-custo td:first-child,.dre-t .row-custo .tc{color:#FF6B6B;}
+        .dre-t tr:hover td{background:#13161D!important;}
         </style>
         """, unsafe_allow_html=True)
 
-        # Build HTML table
-        cols = list(dre_df.columns)
-        header = ''.join(f'<th>{c}</th>' for c in cols)
-        rows_html = ''
-        for i, row in dre_df.iterrows():
-            cells = ''
-            for j, (col, val) in enumerate(zip(cols, row)):
-                cls = ''
-                if 'LUCRO' in col or 'Margem' in col: cls = ' class="lucro"'
-                elif 'Custo' in col: cls = ' class="custo"'
-                cells += f'<td{cls}>{val}</td>'
-            rows_html += f'<tr>{cells}</tr>'
+        th_sem = "".join(f"<th>{s}</th>" for s in semana_cols)
+        header = f"<th>Indicador</th>{th_sem}<th class=\'tc\'>TOTAL</th>"
+
+        rows_html = ""
+        for label, vals, row_type in indicadores:
+            row_cls = f" class=\'row-{row_type}\'" if row_type else ""
+            cells = f"<td>{label}</td>"
+            cells += "".join(f"<td>{v}</td>" for v in vals)
+            cells += f"<td class=\'tc\'>{total_vals[label]}</td>"
+            rows_html += f"<tr{row_cls}>{cells}</tr>"
 
         st.markdown(
-            f'<div style="overflow-x:auto"><table class="dre-table">'
+            f'<div style="overflow-x:auto"><table class="dre-t">'
             f'<thead><tr>{header}</tr></thead>'
             f'<tbody>{rows_html}</tbody>'
             f'</table></div>',
@@ -1583,4 +1580,3 @@ st.markdown(
     f'</div>',
     unsafe_allow_html=True
 )
-
