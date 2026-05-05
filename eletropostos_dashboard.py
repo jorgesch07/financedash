@@ -158,7 +158,7 @@ components.html("""
 components.html("""
 <script>
 (function() {
-    var LOGO_URL = 'https://upload.wikimedia.org/wikipedia/commons/2/2b/Logomarca_Intelbras_verde.png';
+    var LOGO_URL = '/Logomarca_Intelbras_verde (1).png';
 
     function buildTopbar() {
         var pdoc = window.parent.document;
@@ -174,7 +174,7 @@ components.html("""
             '#ib-connector-select{background:#13161D;border:1px solid #1E2330;border-radius:6px;',
             'color:#F0F2F8;font-size:11px;font-family:monospace;padding:5px 12px;cursor:pointer;min-width:200px;}',
             '#ib-connector-select:focus{outline:none;border-color:#00C9A7;}',
-            '#ib-topbar-logo{height:26px;width:auto;object-fit:contain;margin-left:auto;}'
+            '#ib-topbar-logo{height:35px;width:auto;object-fit:contain;margin-left:auto;}'
         ].join('');
         pdoc.head.appendChild(style);
 
