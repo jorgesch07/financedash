@@ -1028,11 +1028,7 @@ def fig_revenue_sources(df, color):
     labels = ['Inicio de Recarga', 'Venda de Energia (kWh)', 'Ociosidade']
     values = [r_inicio, r_kwh, r_ocio]
     r,g,b = int(color[1:3],16), int(color[3:5],16), int(color[5:7],16)
-    pie_colors = [
-        color,
-        f'rgba({r},{g},{b},0.55)',
-        COLORS[2],
-    ]
+    pie_colors = [color, f'rgba({r},{g},{b},0.55)', COLORS[2]]
     fig = go.Figure(go.Pie(
         labels=labels, values=values, hole=0.58,
         marker=dict(colors=pie_colors, line=dict(color='#0D0F14', width=2)),
@@ -1041,21 +1037,17 @@ def fig_revenue_sources(df, color):
         insidetextorientation='horizontal',
         sort=False,
     ))
-    # Anotação central
+    fig.update_layout(**PLOTLY_LAYOUT, height=320)
     fig.update_layout(
-        **PLOTLY_LAYOUT, height=320,
+        showlegend=True,
+        legend=dict(orientation='v', x=1.02, y=0.5,
+                    xanchor='left', yanchor='middle', font=dict(size=10)),
         annotations=[dict(
-            text=f'R$ {total:,.0f}'.replace(',','.'),
+            text=f"R$ {total:,.0f}".replace(',','.'),
             x=0.5, y=0.5, font=dict(size=14, color=TEXT_PRIMARY),
             showarrow=False,
         )],
-        legend=dict(
-            orientation='v', x=1.02, y=0.5,
-            xanchor='left', yanchor='middle',
-            font=dict(size=10),
-        ),
     )
-    fig.update_layout(showlegend=True)
     return fig
 
 def fig_revenue_sources_bar(df, color):
@@ -1428,8 +1420,8 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 with st.sidebar:
     st.markdown(
         '<div style="padding:1rem 0 1.5rem">'
-        '<div style="font-size:1.3rem;font-weight:800;color:#00C9A7">Dashboard Financeiro</div>'
-        '<div style="font-size:0.62rem;color:#6B7280;margin-top:2px">Análise financeiro de estações de recarga</div>'
+        '<div style="font-size:1.3rem;font-weight:800;color:#00C9A7">&#9889; eletropostos</div>'
+        '<div style="font-size:0.62rem;color:#6B7280;margin-top:2px">dashboard financeiro</div>'
         '</div>',
         unsafe_allow_html=True
     )
@@ -1447,7 +1439,7 @@ with st.sidebar:
             st.markdown(f'<div style="font-size:0.68rem;color:#F0F2F8;padding:3px 0">&#128196; {f.name}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown('<div style="font-size:0.62rem;color:#6B7280">MODO DE ANALISE</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.62rem;color:#6B7280">modo de analise</div>', unsafe_allow_html=True)
     mode = st.radio("", ["Por estacao (individual)", "Consolidado (todos os arquivos)"],
                     label_visibility="collapsed")
 
@@ -1465,7 +1457,7 @@ with st.sidebar:
 st.markdown(
     '<div style="margin-bottom:1.5rem">'
     '<div class="page-title">Dashboard <span style="color:#00C9A7">Financeiro</span></div>'
-    '<div class="page-subtitle">Analise financeira</div>'
+    '<div class="page-subtitle">Rede de Eletropostos &middot; Analise de transacoes</div>'
     '</div>',
     unsafe_allow_html=True
 )
@@ -1591,3 +1583,4 @@ st.markdown(
     f'</div>',
     unsafe_allow_html=True
 )
+
