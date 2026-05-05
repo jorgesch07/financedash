@@ -1007,7 +1007,119 @@ def generate_insights(kpis, df):
 
 
 # ─── UNIFIED RENDERER ─────────────────────────────────────────────────────────
-def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct, anon):
+def _revenue_sources(df):
+    """Calcula as três fontes de receita para sessões pagas."""
+    paid = df[df['paid']].copy()
+    for c in ['Receita(R$) por Início de Recarga', 'Receita(R$) por kWh', 'Valor Ociosidade', 'Energia(kWh)']:
+        if c not in paid.columns:
+            paid[c] = 0
+        paid[c] = pd.to_numeric(paid[c], errors='coerce').fillna(0)
+    r_inicio = paid['Receita(R$) por Início de Recarga'].sum()
+    r_kwh    = (paid['Energia(kWh)'] * paid['Receita(R$) por kWh']).sum()
+    r_ocio   = paid['Valor Ociosidade'].sum()
+    return r_inicio, r_kwh, r_ocio
+
+def fig_revenue_sources(df, color):
+    """Gráfico de pizza — receita por origem (início, kWh, ociosidade)."""
+    r_inicio, r_kwh, r_ocio = _revenue_sources(df)
+    total = r_inicio + r_kwh + r_ocio
+    if total == 0:
+        return go.Figure()
+    labels = ['Inicio de Recarga', 'Venda de Energia (kWh)', 'Ociosidade']
+    values = [r_inicio, r_kwh, r_ocio]
+    r,g,b = int(color[1:3],16), int(color[3:5],16), int(color[5:7],16)
+    pie_colors = [
+        color,
+        f'rgba({r},{g},{b},0.55)',
+        COLORS[2],
+    ]
+    fig = go.Figure(go.Pie(
+        labels=labels, values=values, hole=0.58,
+        marker=dict(colors=pie_colors, line=dict(color='#0D0F14', width=2)),
+        textinfo='label+percent',
+        textfont=dict(size=11),
+        insidetextorientation='horizontal',
+        sort=False,
+    ))
+    # Anotação central
+    fig.update_layout(
+        **PLOTLY_LAYOUT, height=320,
+        annotations=[dict(
+            text=f'R$ {total:,.0f}'.replace(',','.'),
+            x=0.5, y=0.5, font=dict(size=14, color=TEXT_PRIMARY),
+            showarrow=False,
+        )],
+        legend=dict(
+            orientation='v', x=1.02, y=0.5,
+            xanchor='left', yanchor='middle',
+            font=dict(size=10),
+        ),
+    )
+    fig.update_layout(showlegend=True)
+    return fig
+
+def fig_revenue_sources_bar(df, color):
+    """Gráfico de barras — receita por origem e por semana."""
+    paid = df[df['paid']].copy()
+    for c in ['Receita(R$) por Início de Recarga','Receita(R$) por kWh','Valor Ociosidade','Energia(kWh)']:
+        if c not in paid.columns: paid[c] = 0
+        paid[c] = pd.to_numeric(paid[c], errors='coerce').fillna(0)
+    paid['r_inicio'] = paid['Receita(R$) por Início de Recarga']
+    paid['r_kwh']    = paid['Energia(kWh)'] * paid['Receita(R$) por kWh']
+    paid['r_ocio']   = paid['Valor Ociosidade']
+    paid['semana']   = paid['data_inicio'].dt.isocalendar().week
+    weekly = paid.groupby('semana').agg(
+        r_inicio=('r_inicio','sum'),
+        r_kwh=('r_kwh','sum'),
+        r_ocio=('r_ocio','sum'),
+    ).reset_index()
+    x = ['Sem ' + str(w) for w in weekly['semana']]
+    r,g,b = int(color[1:3],16), int(color[3:5],16), int(color[5:7],16)
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=x, y=weekly['r_inicio'], name='Inicio de Recarga',
+                         marker_color=color, opacity=0.9))
+    fig.add_trace(go.Bar(x=x, y=weekly['r_kwh'], name='Venda de Energia (kWh)',
+                         marker_color=f'rgba({r},{g},{b},0.5)', opacity=0.9))
+    fig.add_trace(go.Bar(x=x, y=weekly['r_ocio'], name='Ociosidade',
+                         marker_color=COLORS[2], opacity=0.9))
+    fig.update_layout(**PLOTLY_LAYOUT, barmode='stack', height=280)
+    fig.update_layout(showlegend=True)
+    fig.update_xaxes(gridcolor='#1E2330', linecolor='#1E2330')
+    fig.update_yaxes(tickprefix='R$ ', tickformat=',.0f', gridcolor='#1E2330', linecolor='#1E2330')
+    return fig
+
+def build_dre_table(df, custo_kwh, custo_pct):
+    """Monta o DataFrame da DRE semanal."""
+    paid = df[df['paid']].copy()
+    for c in ['Receita(R$) por Início de Recarga','Receita(R$) por kWh','Valor Ociosidade','Energia(kWh)']:
+        if c not in paid.columns: paid[c] = 0
+        paid[c] = pd.to_numeric(paid[c], errors='coerce').fillna(0)
+    paid['r_inicio'] = paid['Receita(R$) por Início de Recarga']
+    paid['r_kwh']    = paid['Energia(kWh)'] * paid['Receita(R$) por kWh']
+    paid['r_ocio']   = paid['Valor Ociosidade']
+    paid['semana']   = paid['data_inicio'].dt.isocalendar().week
+
+    weekly = paid.groupby('semana').agg(
+        r_inicio=('r_inicio','sum'),
+        r_kwh_rec=('r_kwh','sum'),
+        r_ocio=('r_ocio','sum'),
+        sessoes=('Receita(R$)','count'),
+        kwh=('Energia(kWh)','sum'),
+        receita=('Receita(R$)','sum'),
+    ).reset_index()
+
+    weekly['receita_total'] = weekly['r_inicio'] + weekly['r_kwh_rec'] + weekly['r_ocio']
+    weekly['custo_energia'] = weekly['kwh'] * custo_kwh
+    weekly['custo_operacional'] = weekly['receita_total'] * (custo_pct / 100)
+    weekly['custo_total'] = weekly['custo_energia'] + weekly['custo_operacional']
+    weekly['lucro_bruto'] = weekly['receita_total'] - weekly['custo_total']
+    weekly['margem'] = weekly.apply(
+        lambda r: r['lucro_bruto']/r['receita_total']*100 if r['receita_total'] else 0, axis=1)
+
+    return weekly
+
+
+
     """Renderiza todos os KPIs e graficos — identico para modo individual e consolidado."""
 
     # ── ROW 1: 4 cards principais ─────────────────────────────────────────────
@@ -1143,6 +1255,31 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     st.markdown("<br>", unsafe_allow_html=True)
     st.plotly_chart(fig_cost, use_container_width=True)
 
+    # ── RECEITA POR ORIGEM ────────────────────────────────────────────────────
+    section("Receita por Origem")
+    r_inicio, r_kwh, r_ocio = _revenue_sources(df)
+    total_src = r_inicio + r_kwh + r_ocio
+    rs1, rs2, rs3 = st.columns(3)
+    with rs1: kpi_card("Inicio de Recarga",
+                       f"R$ {r_inicio:,.2f}",
+                       f"{r_inicio/total_src*100:.1f}% da receita" if total_src else "–",
+                       color)
+    with rs2: kpi_card("Venda de Energia (kWh)",
+                       f"R$ {r_kwh:,.2f}",
+                       f"{r_kwh/total_src*100:.1f}% da receita" if total_src else "–",
+                       COLORS[1])
+    with rs3: kpi_card("Ociosidade",
+                       f"R$ {r_ocio:,.2f}",
+                       f"{r_ocio/total_src*100:.1f}% da receita" if total_src else "–",
+                       COLORS[2])
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    col_pie, col_bar = st.columns([1, 2])
+    with col_pie:
+        st.plotly_chart(fig_revenue_sources(df, color), use_container_width=True)
+    with col_bar:
+        st.plotly_chart(fig_revenue_sources_bar(df, color), use_container_width=True)
+
     # ── SEGMENTACAO USUARIOS ──────────────────────────────────────────────────
     section("Segmentacao de Usuarios e Receita por Segmento")
     st.plotly_chart(fig_users(df, color, kpis['tag_col']), use_container_width=True)
@@ -1183,6 +1320,85 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
                 'Proj. Anual': f"R$ {k['proj_annual']:,.0f}",
             })
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    # ── DRE SEMANAL ───────────────────────────────────────────────────────────
+    section("DRE — Demonstrativo de Resultado por Semana")
+    dre = build_dre_table(df, custo_kwh, custo_pct)
+    if len(dre) == 0:
+        st.caption("Dados insuficientes para gerar a DRE.")
+    else:
+        # Linha de TOTAL
+        total_row = {
+            'Semana': 'TOTAL',
+            'Sessoes Pagas': f"{dre['sessoes'].sum():,}",
+            'kWh Entregues': f"{dre['kwh'].sum():,.1f}",
+            'R$ Inicio Recarga': f"R$ {dre['r_inicio'].sum():,.2f}",
+            'R$ Energia (kWh)': f"R$ {dre['r_kwh_rec'].sum():,.2f}",
+            'R$ Ociosidade': f"R$ {dre['r_ocio'].sum():,.2f}",
+            'RECEITA TOTAL': f"R$ {dre['receita_total'].sum():,.2f}",
+            '(-) Custo Energia': f"R$ {dre['custo_energia'].sum():,.2f}",
+            '(-) Custo Operac.': f"R$ {dre['custo_operacional'].sum():,.2f}",
+            '(=) LUCRO BRUTO': f"R$ {dre['lucro_bruto'].sum():,.2f}",
+            'Margem (%)': f"{dre['lucro_bruto'].sum()/dre['receita_total'].sum()*100:.1f}%" if dre['receita_total'].sum() else '–',
+        }
+        dre_display = []
+        for _, row in dre.iterrows():
+            dre_display.append({
+                'Semana': f"Semana {int(row['semana'])}",
+                'Sessoes Pagas': f"{int(row['sessoes']):,}",
+                'kWh Entregues': f"{row['kwh']:,.1f}",
+                'R$ Inicio Recarga': f"R$ {row['r_inicio']:,.2f}",
+                'R$ Energia (kWh)': f"R$ {row['r_kwh_rec']:,.2f}",
+                'R$ Ociosidade': f"R$ {row['r_ocio']:,.2f}",
+                'RECEITA TOTAL': f"R$ {row['receita_total']:,.2f}",
+                '(-) Custo Energia': f"R$ {row['custo_energia']:,.2f}",
+                '(-) Custo Operac.': f"R$ {row['custo_operacional']:,.2f}",
+                '(=) LUCRO BRUTO': f"R$ {row['lucro_bruto']:,.2f}",
+                'Margem (%)': f"{row['margem']:.1f}%",
+            })
+        dre_display.append(total_row)
+        dre_df = pd.DataFrame(dre_display)
+
+        # Renderiza com destaque na linha TOTAL e na coluna LUCRO
+        st.markdown("""
+        <style>
+        .dre-table { width:100%; border-collapse:collapse; font-size:0.72rem; font-family:monospace; }
+        .dre-table th { background:#1E2330; color:#6B7280; text-transform:uppercase;
+                        letter-spacing:.06em; padding:6px 10px; text-align:right; border-bottom:1px solid #2D3340; }
+        .dre-table th:first-child { text-align:left; }
+        .dre-table td { padding:5px 10px; border-bottom:1px solid #1A1C24; color:#F0F2F8;
+                        text-align:right; }
+        .dre-table td:first-child { text-align:left; color:#9CA3AF; }
+        .dre-table tr:last-child td { background:#13161D; font-weight:700;
+                                       border-top:2px solid #2D3340; color:#F0F2F8; }
+        .dre-table tr:last-child td:first-child { color:#00C9A7; }
+        .dre-table .lucro { color:#00C9A7 !important; font-weight:600; }
+        .dre-table .custo { color:#FF6B6B !important; }
+        .dre-table tr:hover td { background:#13161D; }
+        </style>
+        """, unsafe_allow_html=True)
+
+        # Build HTML table
+        cols = list(dre_df.columns)
+        header = ''.join(f'<th>{c}</th>' for c in cols)
+        rows_html = ''
+        for i, row in dre_df.iterrows():
+            cells = ''
+            for j, (col, val) in enumerate(zip(cols, row)):
+                cls = ''
+                if 'LUCRO' in col or 'Margem' in col: cls = ' class="lucro"'
+                elif 'Custo' in col: cls = ' class="custo"'
+                cells += f'<td{cls}>{val}</td>'
+            rows_html += f'<tr>{cells}</tr>'
+
+        st.markdown(
+            f'<div style="overflow-x:auto"><table class="dre-table">'
+            f'<thead><tr>{header}</tr></thead>'
+            f'<tbody>{rows_html}</tbody>'
+            f'</table></div>',
+            unsafe_allow_html=True
+        )
+    st.markdown("<br>", unsafe_allow_html=True)
 
     # ── EXPORTAR PDF ──────────────────────────────────────────────────────────
     section("Exportar Relatorio")
