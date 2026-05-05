@@ -174,7 +174,7 @@ components.html("""
             '#ib-connector-select{background:#13161D;border:1px solid #1E2330;border-radius:6px;',
             'color:#F0F2F8;font-size:11px;font-family:monospace;padding:5px 12px;cursor:pointer;min-width:200px;}',
             '#ib-connector-select:focus{outline:none;border-color:#00C9A7;}',
-            '#ib-topbar-logo{height:35px;width:auto;object-fit:contain;margin-left:auto;}'
+            '#ib-topbar-logo{height:40px;width:auto;object-fit:contain;margin-left:auto;}'
         ].join('');
         pdoc.head.appendChild(style);
 
