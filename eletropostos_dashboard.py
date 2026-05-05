@@ -733,7 +733,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio"):
         story.append(Spacer(1, 0.5*cm))
         story.append(Paragraph('RELATORIO FINANCEIRO', S(8, bold=True, color=C_GREY)))
         story.append(Spacer(1, 4))
-        story.append(Paragraph('Eletropostos Dashboard', S(20, bold=True, color=C_BLACK)))
+        story.append(Paragraph('Dashboard Financeiro - Intelbras', S(20, bold=True, color=C_BLACK)))
         story.append(Paragraph(title, S(12, bold=True, color=C_BLUE)))
         story.append(Spacer(1, 4))
         story.append(Paragraph(
@@ -938,7 +938,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio"):
         story.append(HRFlowable(width=W, thickness=0.5, color=C_BORD))
         story.append(Spacer(1, 4))
         story.append(Paragraph(
-            f'Eletropostos Dashboard  |  {datetime.date.today().strftime("%d/%m/%Y")}  |  '
+            f'Dashboard Financeiro  |  {datetime.date.today().strftime("%d/%m/%Y")}  |  '
             f'Relatorio gerado automaticamente',
             S(7, color=C_GREY, align=TA_CENTER)
         ))
@@ -1428,8 +1428,8 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 with st.sidebar:
     st.markdown(
         '<div style="padding:1rem 0 1.5rem">'
-        '<div style="font-size:1.3rem;font-weight:800;color:#00C9A7">&#9889; eletropostos</div>'
-        '<div style="font-size:0.62rem;color:#6B7280;margin-top:2px">dashboard financeiro</div>'
+        '<div style="font-size:1.3rem;font-weight:800;color:#00C9A7">Dashboard Financeiro</div>'
+        '<div style="font-size:0.62rem;color:#6B7280;margin-top:2px">Análise financeiro de estações de recarga</div>'
         '</div>',
         unsafe_allow_html=True
     )
@@ -1447,7 +1447,7 @@ with st.sidebar:
             st.markdown(f'<div style="font-size:0.68rem;color:#F0F2F8;padding:3px 0">&#128196; {f.name}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown('<div style="font-size:0.62rem;color:#6B7280">modo de analise</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.62rem;color:#6B7280">MODO DE ANALISE</div>', unsafe_allow_html=True)
     mode = st.radio("", ["Por estacao (individual)", "Consolidado (todos os arquivos)"],
                     label_visibility="collapsed")
 
@@ -1465,7 +1465,7 @@ with st.sidebar:
 st.markdown(
     '<div style="margin-bottom:1.5rem">'
     '<div class="page-title">Dashboard <span style="color:#00C9A7">Financeiro</span></div>'
-    '<div class="page-subtitle">Rede de Eletropostos &middot; Analise de transacoes</div>'
+    '<div class="page-subtitle">Analise financeira</div>'
     '</div>',
     unsafe_allow_html=True
 )
