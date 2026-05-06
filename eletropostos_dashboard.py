@@ -576,23 +576,58 @@ def fig_revenue_cost_profit(df, custo_kwh, custo_pct):
     return fig, daily
 
 
+def _decode_plotly(val):
+    """Decodifica valores serializados pelo Plotly como {'dtype':..., 'bdata':...}."""
+    import base64 as _b64
+    if isinstance(val, dict) and 'bdata' in val:
+        dtype_map = {'f4': 'float32','f8': 'float64','i2': 'int16',
+                     'i4': 'int32','i8': 'int64','u1': 'uint8'}
+        dt = dtype_map.get(val.get('dtype','f8'), 'float64')
+        raw = _b64.b64decode(val['bdata'])
+        return np.frombuffer(raw, dtype=dt).tolist()
+    if isinstance(val, (list, tuple)):
+        return [_decode_plotly(v) for v in val]
+    return val
+
+
+def _safe_color(mc, default='#888888'):
+    """Extrai cor segura — ignora arrays numéricos e dicts bdata."""
+    if mc is None: return default
+    if isinstance(mc, str) and (mc.startswith('#') or mc.startswith('rgb')): return mc
+    if isinstance(mc, dict): return default          # bdata serializado
+    if isinstance(mc, (list, tuple)) and len(mc) > 0:
+        first = mc[0]
+        if isinstance(first, str) and (first.startswith('#') or first.startswith('rgb')):
+            return first
+        return default  # lista numérica
+    return default
+
+
 def _fig_to_img(fig, w=900, h=350, lmargin=60):
     """
-    Converte figura Plotly para PNG usando matplotlib como backend.
+    Converte figura Plotly para PNG usando matplotlib.
     Não requer Chrome/kaleido — funciona em qualquer ambiente.
     """
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     import matplotlib.patches as mpatches
-    import numpy as np
 
     fig_dict = fig.to_dict()
     traces   = fig_dict.get('data', [])
     layout   = fig_dict.get('layout', {})
+    if not traces:
+        return None
 
-    # Dimensões em polegadas (72dpi base → 2x = 144dpi final)
-    dpi = 600
+    PALETTE = ['#00C9A7','#0088FE','#FF6B6B','#FFD93D',
+               '#A855F7','#F97316','#06B6D4','#84CC16']
+
+    is_h      = any(t.get('orientation') == 'h'            for t in traces)
+    is_pie    = any(t.get('type') == 'pie'                  for t in traces)
+    is_fun    = any(t.get('type') == 'funnel'               for t in traces)
+    is_line   = any(t.get('type') in ('scatter','scattergl') for t in traces)
+
+    dpi   = 120
     fig_w = w / dpi
     fig_h = h / dpi
 
@@ -600,231 +635,183 @@ def _fig_to_img(fig, w=900, h=350, lmargin=60):
     mfig.patch.set_facecolor('white')
     ax.set_facecolor('#F8F9FA')
     ax.tick_params(colors='#444', labelsize=8)
-    ax.spines[:].set_color('#CCCCCC')
-    for spine in ax.spines.values():
-        spine.set_linewidth(0.5)
+    for sp in ax.spines.values():
+        sp.set_color('#CCCCCC'); sp.set_linewidth(0.5)
     ax.grid(axis='y', color='#E8E8E8', linewidth=0.5, zorder=0)
-
-    PALETTE = ['#00C9A7','#0088FE','#FF6B6B','#FFD93D',
-               '#A855F7','#F97316','#06B6D4','#84CC16']
-
-    is_h   = any(t.get('orientation') == 'h' for t in traces)
-    is_pie = any(t.get('type') == 'pie'       for t in traces)
-    is_fun = any(t.get('type') == 'funnel'    for t in traces)
-    is_scatter = any(t.get('type') in ('scatter', 'scattergl') for t in traces)
 
     legend_patches = []
 
-    # ── PIE / DONUT ──────────────────────────────────────────────────────────
+    # ── PIE ──────────────────────────────────────────────────────────────────
     if is_pie:
         ax.set_visible(False)
-        ax2 = mfig.add_axes([0.05, 0.05, 0.55, 0.9])
-        ax2.set_facecolor('white')
+        aax = mfig.add_axes([0.05, 0.05, 0.55, 0.9])
+        aax.set_facecolor('white')
         t = traces[0]
-        vals   = [float(v) for v in (t.get('values') or t.get('y') or [])]
-        labels = list(t.get('labels') or t.get('x') or [f'Item {i}' for i in range(len(vals))])
-        colors = t.get('marker', {}).get('colors', PALETTE[:len(vals)])
-        # Convert rgba strings to hex if needed
+        vals   = [float(v) for v in _decode_plotly(t.get('values') or [])]
+        labels = list(t.get('labels') or [f'Item {i}' for i in range(len(vals))])
+        raw_colors = t.get('marker', {}).get('colors', [])
+        if isinstance(raw_colors, dict): raw_colors = []
         mcolors = []
-        for c in colors[:len(vals)]:
+        for c in raw_colors[:len(vals)]:
             try:
                 if isinstance(c, str) and c.startswith('rgba'):
-                    parts = c.strip('rgba()').split(',')
-                    r,g,b = int(parts[0]),int(parts[1]),int(parts[2])
-                    mcolors.append(f'#{r:02x}{g:02x}{b:02x}')
-                else:
+                    p = c.strip('rgba()').split(',')
+                    mcolors.append(f'#{int(p[0]):02x}{int(p[1]):02x}{int(p[2]):02x}')
+                elif isinstance(c, str):
                     mcolors.append(c)
+                else:
+                    mcolors.append(PALETTE[len(mcolors) % len(PALETTE)])
             except Exception:
                 mcolors.append(PALETTE[len(mcolors) % len(PALETTE)])
-        hole = t.get('hole', 0)
-        wedges, texts, autotexts = ax2.pie(
+        while len(mcolors) < len(vals):
+            mcolors.append(PALETTE[len(mcolors) % len(PALETTE)])
+        hole = float(t.get('hole') or 0)
+        _, _, autotexts = aax.pie(
             vals, labels=None, colors=mcolors,
             autopct='%1.1f%%', pctdistance=0.75,
             wedgeprops=dict(width=1-hole if hole else 1, edgecolor='white', linewidth=1.5),
             startangle=90,
         )
         for at in autotexts:
-            at.set_fontsize(8)
-            at.set_color('white')
-        # Legend
+            at.set_fontsize(8); at.set_color('white')
         for lbl, col in zip(labels, mcolors):
-            legend_patches.append(mpatches.Patch(color=col, label=lbl[:30]))
+            legend_patches.append(mpatches.Patch(color=col, label=str(lbl)[:30]))
         mfig.legend(handles=legend_patches, loc='center right',
                     bbox_to_anchor=(0.98, 0.5), fontsize=8, frameon=False)
         total = sum(vals)
         if hole:
-            ax2.text(0, 0, f"R$ {total:,.0f}".replace(',','.'),
+            aax.text(0, 0, f"R$ {total:,.0f}".replace(',','.'),
                      ha='center', va='center', fontsize=9, fontweight='bold', color='#222')
-        plt.tight_layout(pad=0.5)
+        plt.tight_layout(pad=0.3)
         buf = io.BytesIO()
         mfig.savefig(buf, format='png', dpi=dpi, bbox_inches='tight',
                      facecolor='white', edgecolor='none')
-        plt.close(mfig)
-        buf.seek(0)
-        return buf.read()
+        plt.close(mfig); buf.seek(0); return buf.read()
 
     # ── FUNNEL ───────────────────────────────────────────────────────────────
     if is_fun:
         t = traces[0]
-        xvals  = [float(v) for v in (t.get('x') or [])]
-        ylabels = list(t.get('y') or [f'Step {i}' for i in range(len(xvals))])
+        xvals   = [float(v) for v in _decode_plotly(t.get('x') or [])]
+        ylabels = list(t.get('y') or [])
+        max_v   = max(xvals) if xvals else 1
         colors_f = [PALETTE[i % len(PALETTE)] for i in range(len(xvals))]
-        max_v = max(xvals) if xvals else 1
-        bar_w = [v / max_v for v in xvals]
-        ys = range(len(xvals))
         bars = ax.barh([str(y) for y in ylabels], xvals,
                        color=colors_f, height=0.5, zorder=3)
-        ax.set_xlabel('')
         ax.invert_yaxis()
-        ax.set_xlim(0, max_v * 1.15)
-        ax.xaxis.set_visible(False)
-        ax.grid(False)
+        ax.set_xlim(0, max_v * 1.18)
+        ax.xaxis.set_visible(False); ax.grid(False)
         for bar, val in zip(bars, xvals):
-            ax.text(bar.get_width() + max_v * 0.01, bar.get_y() + bar.get_height()/2,
+            ax.text(bar.get_width() + max_v*0.01, bar.get_y()+bar.get_height()/2,
                     f'{val:,.0f}', va='center', fontsize=8, color='#333')
-        plt.tight_layout(pad=0.5)
+        plt.tight_layout(pad=0.3)
         buf = io.BytesIO()
         mfig.savefig(buf, format='png', dpi=dpi, bbox_inches='tight',
                      facecolor='white', edgecolor='none')
-        plt.close(mfig)
-        buf.seek(0)
-        return buf.read()
+        plt.close(mfig); buf.seek(0); return buf.read()
 
     # ── HORIZONTAL BARS ──────────────────────────────────────────────────────
     if is_h:
         ax.grid(axis='x', color='#E8E8E8', linewidth=0.5, zorder=0)
         ax.grid(axis='y', visible=False)
-        n_traces = len(traces)
-        all_labels = list(traces[0].get('y') or [])
+        all_labels = list(_decode_plotly(traces[0].get('y') or []))
         n = len(all_labels)
-        y_pos = np.arange(n)
-        bar_h = 0.7 / max(n_traces, 1)
-        offsets = np.linspace(-(n_traces-1)/2, (n_traces-1)/2, n_traces) * bar_h
+        n_tr = len(traces)
+        bar_h  = 0.7 / max(n_tr, 1)
+        y_pos  = np.arange(n)
+        offsets = np.linspace(-(n_tr-1)/2, (n_tr-1)/2, n_tr) * bar_h
         for i, t in enumerate(traces):
-            xvals  = [float(v) if v is not None else 0
-                      for v in (t.get('x') or [])]
-            labels = list(t.get('y') or all_labels)
-            c = PALETTE[i % len(PALETTE)]
-            if isinstance(t.get('marker'), dict):
-                mc = t['marker'].get('color')
-                if isinstance(mc, str) and mc.startswith('#'):
-                    c = mc
-            bars = ax.barh(y_pos + offsets[i], xvals[:n], height=bar_h * 0.9,
-                           color=c, zorder=3, label=t.get('name', ''))
-            legend_patches.append(mpatches.Patch(color=c, label=(t.get('name') or '')[:25]))
+            xvals  = [float(v) for v in _decode_plotly(t.get('x') or [])]
+            c = _safe_color(t.get('marker', {}).get('color'), PALETTE[i % len(PALETTE)])
+            ax.barh(y_pos + offsets[i], xvals[:n], height=bar_h*0.88,
+                    color=c, zorder=3, label=str(t.get('name') or ''))
+            legend_patches.append(mpatches.Patch(color=c, label=str(t.get('name') or '')[:25]))
         ax.set_yticks(y_pos)
-        ax.set_yticklabels([str(l)[:35] for l in all_labels], fontsize=8)
+        ax.set_yticklabels([str(l)[:38] for l in all_labels], fontsize=8)
         ax.invert_yaxis()
-        # x-axis formatting
         ticks = ax.get_xticks()
-        ax.set_xticklabels(
-            [f'R${v/1000:.0f}k' if abs(v) >= 1000 else str(int(v)) for v in ticks],
-            fontsize=8
+        ax.xaxis.set_major_formatter(
+            plt.FuncFormatter(lambda v,_: f'R${v/1000:.0f}k' if abs(v)>=1000 else str(int(v)))
         )
-        if n_traces > 1:
-            ax.legend(handles=legend_patches, fontsize=7, frameon=False,
-                      loc='lower right')
-        plt.tight_layout(pad=0.5)
+        if n_tr > 1:
+            ax.legend(handles=legend_patches, fontsize=7, frameon=False, loc='lower right')
+        plt.tight_layout(pad=0.3)
         buf = io.BytesIO()
         mfig.savefig(buf, format='png', dpi=dpi, bbox_inches='tight',
                      facecolor='white', edgecolor='none')
-        plt.close(mfig)
-        buf.seek(0)
-        return buf.read()
+        plt.close(mfig); buf.seek(0); return buf.read()
 
     # ── LINE / SCATTER ───────────────────────────────────────────────────────
-    if is_scatter:
+    if is_line:
         ax.grid(axis='y', color='#E8E8E8', linewidth=0.5, zorder=0)
         for i, t in enumerate(traces):
-            xvals = list(t.get('x') or [])
-            yvals = [float(v) if v is not None else 0 for v in (t.get('y') or [])]
-            c = PALETTE[i % len(PALETTE)]
-            if isinstance(t.get('line'), dict):
-                lc = t['line'].get('color','')
-                if lc and isinstance(lc, str) and lc.startswith('#'):
-                    c = lc
-            lw = 1.5
-            ls = '--' if isinstance(t.get('line'), dict) and t['line'].get('dash') else '-'
-            ax.plot(xvals, yvals, color=c, linewidth=lw, linestyle=ls,
-                    label=(t.get('name') or '')[:25], zorder=3)
+            xvals = _decode_plotly(t.get('x') or [])
+            yvals = [float(v) if v is not None else 0
+                     for v in _decode_plotly(t.get('y') or [])]
+            lc  = (t.get('line') or {}).get('color', '')
+            c   = _safe_color(lc, PALETTE[i % len(PALETTE)])
+            ls  = '--' if (t.get('line') or {}).get('dash') else '-'
+            xs  = list(range(len(yvals)))
+            ax.plot(xs, yvals, color=c, linewidth=1.5, linestyle=ls,
+                    label=str(t.get('name') or '')[:25], zorder=3)
             if t.get('fill') == 'tozeroy':
-                ax.fill_between(range(len(yvals)), yvals, alpha=0.07, color=c)
-        # Format y-axis
-        ticks = ax.get_yticks()
-        ax.set_yticklabels(
-            [f'R${v/1000:.0f}k' if abs(v) >= 1000 else str(int(v)) for v in ticks],
-            fontsize=8
+                ax.fill_between(xs, yvals, alpha=0.07, color=c)
+        ax.yaxis.set_major_formatter(
+            plt.FuncFormatter(lambda v,_: f'R${v/1000:.0f}k' if abs(v)>=1000 else str(int(v)))
         )
-        # Format x-axis dates
-        xlabels = [str(x)[:10] for x in (traces[0].get('x') or [])]
-        step = max(1, len(xlabels) // 8)
+        xlabels = [str(v)[:10] for v in _decode_plotly(traces[0].get('x') or [])]
+        step = max(1, len(xlabels)//8)
         ax.set_xticks(range(0, len(xlabels), step))
         ax.set_xticklabels(xlabels[::step], rotation=30, ha='right', fontsize=8)
         if len(traces) > 1:
             ax.legend(fontsize=7, frameon=False, loc='upper left')
-        plt.tight_layout(pad=0.5)
+        plt.tight_layout(pad=0.3)
         buf = io.BytesIO()
         mfig.savefig(buf, format='png', dpi=dpi, bbox_inches='tight',
                      facecolor='white', edgecolor='none')
-        plt.close(mfig)
-        buf.seek(0)
-        return buf.read()
+        plt.close(mfig); buf.seek(0); return buf.read()
 
-    # ── VERTICAL BARS (default) ──────────────────────────────────────────────
-    n_traces = len(traces)
-    if n_traces == 0:
-        plt.close(mfig)
-        return None
-    all_x = list(traces[0].get('x') or [])
-    n = len(all_x)
-    x_pos = np.arange(n)
-    bar_w = 0.7 / max(n_traces, 1)
-    offsets = np.linspace(-(n_traces-1)/2, (n_traces-1)/2, n_traces) * bar_w
+    # ── VERTICAL BARS ────────────────────────────────────────────────────────
+    all_x  = list(_decode_plotly(traces[0].get('x') or []))
+    n      = len(all_x)
+    n_tr   = len(traces)
+    x_pos  = np.arange(n)
+    bar_w  = 0.7 / max(n_tr, 1)
+    offsets = np.linspace(-(n_tr-1)/2, (n_tr-1)/2, n_tr) * bar_w
     barmode = layout.get('barmode', 'group')
 
     if barmode == 'stack':
         bottoms = np.zeros(n)
         for i, t in enumerate(traces):
-            yvals = [float(v) if v is not None else 0 for v in (t.get('y') or [])]
-            c = PALETTE[i % len(PALETTE)]
-            if isinstance(t.get('marker'), dict):
-                mc = t['marker'].get('color')
-                if isinstance(mc, str) and mc.startswith('#'):
-                    c = mc
+            yvals = [float(v) if v is not None else 0
+                     for v in _decode_plotly(t.get('y') or [])]
+            c = _safe_color(t.get('marker', {}).get('color'), PALETTE[i % len(PALETTE)])
             ax.bar(x_pos, yvals[:n], bottom=bottoms[:n], color=c,
-                   width=0.6, zorder=3, label=(t.get('name') or '')[:25])
+                   width=0.6, zorder=3, label=str(t.get('name') or '')[:25])
             bottoms[:n] += np.array(yvals[:n])
-            legend_patches.append(mpatches.Patch(color=c, label=(t.get('name') or '')[:25]))
+            legend_patches.append(mpatches.Patch(color=c, label=str(t.get('name') or '')[:25]))
     else:
         for i, t in enumerate(traces):
-            yvals = [float(v) if v is not None else 0 for v in (t.get('y') or [])]
-            c = PALETTE[i % len(PALETTE)]
-            if isinstance(t.get('marker'), dict):
-                mc = t['marker'].get('color')
-                if isinstance(mc, str) and mc.startswith('#'):
-                    c = mc
-            ax.bar(x_pos + offsets[i], yvals[:n], width=bar_w * 0.9,
-                   color=c, zorder=3, label=(t.get('name') or '')[:25])
-            legend_patches.append(mpatches.Patch(color=c, label=(t.get('name') or '')[:25]))
+            yvals = [float(v) if v is not None else 0
+                     for v in _decode_plotly(t.get('y') or [])]
+            c = _safe_color(t.get('marker', {}).get('color'), PALETTE[i % len(PALETTE)])
+            ax.bar(x_pos + offsets[i], yvals[:n], width=bar_w*0.9,
+                   color=c, zorder=3, label=str(t.get('name') or '')[:25])
+            legend_patches.append(mpatches.Patch(color=c, label=str(t.get('name') or '')[:25]))
 
-    step = max(1, n // 10)
+    step = max(1, n//10)
     ax.set_xticks(x_pos[::step])
-    ax.set_xticklabels([str(x)[:12] for x in all_x[::step]], rotation=30, ha='right', fontsize=8)
-    ticks = ax.get_yticks()
-    ax.set_yticklabels(
-        [f'R${v/1000:.0f}k' if abs(v) >= 1000 else str(int(v)) for v in ticks],
-        fontsize=8
+    ax.set_xticklabels([str(x)[:14] for x in all_x[::step]], rotation=30, ha='right', fontsize=8)
+    ax.yaxis.set_major_formatter(
+        plt.FuncFormatter(lambda v,_: f'R${v/1000:.0f}k' if abs(v)>=1000 else str(int(v)))
     )
-    if n_traces > 1:
+    if n_tr > 1:
         ax.legend(handles=legend_patches, fontsize=7, frameon=False, loc='upper right')
 
-    plt.tight_layout(pad=0.5)
+    plt.tight_layout(pad=0.3)
     buf = io.BytesIO()
     mfig.savefig(buf, format='png', dpi=dpi, bbox_inches='tight',
                  facecolor='white', edgecolor='none')
-    plt.close(mfig)
-    buf.seek(0)
-    return buf.read()
+    plt.close(mfig); buf.seek(0); return buf.read()
 
 
 
