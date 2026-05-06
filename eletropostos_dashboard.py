@@ -174,7 +174,7 @@ components.html("""
             '#ib-connector-select{background:#13161D;border:1px solid #1E2330;border-radius:6px;',
             'color:#F0F2F8;font-size:11px;font-family:monospace;padding:5px 12px;cursor:pointer;min-width:200px;}',
             '#ib-connector-select:focus{outline:none;border-color:#00C9A7;}',
-            '#ib-topbar-logo{height:40px;width:auto;object-fit:contain;margin-left:auto;}'
+            '#ib-topbar-logo{height:26px;width:auto;object-fit:contain;margin-left:auto;}'
         ].join('');
         pdoc.head.appendChild(style);
 
@@ -814,7 +814,6 @@ def _fig_to_img(fig, w=900, h=350, lmargin=60):
     plt.close(mfig); buf.seek(0); return buf.read()
 
 
-
 def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio"):
     try:
         from reportlab.lib.pagesizes import A4
@@ -904,7 +903,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio"):
         story.append(Spacer(1, 0.5*cm))
         story.append(Paragraph('RELATORIO FINANCEIRO', S(8, bold=True, color=C_GREY)))
         story.append(Spacer(1, 4))
-        story.append(Paragraph('Dashboard Financeiro - Intelbras', S(20, bold=True, color=C_BLACK)))
+        story.append(Paragraph('Eletropostos Dashboard', S(20, bold=True, color=C_BLACK)))
         story.append(Paragraph(title, S(12, bold=True, color=C_BLUE)))
         story.append(Spacer(1, 4))
         story.append(Paragraph(
@@ -1109,7 +1108,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio"):
         story.append(HRFlowable(width=W, thickness=0.5, color=C_BORD))
         story.append(Spacer(1, 4))
         story.append(Paragraph(
-            f'Dashboard Financeiro  |  {datetime.date.today().strftime("%d/%m/%Y")}  |  '
+            f'Eletropostos Dashboard  |  {datetime.date.today().strftime("%d/%m/%Y")}  |  '
             f'Relatorio gerado automaticamente',
             S(7, color=C_GREY, align=TA_CENTER)
         ))
@@ -1588,8 +1587,8 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 with st.sidebar:
     st.markdown(
         '<div style="padding:1rem 0 1.5rem">'
-        '<div style="font-size:1.3rem;font-weight:800;color:#00C9A7">Dashboard financeiro</div>'
-        '<div style="font-size:0.62rem;color:#6B7280;margin-top:2px">Análise financeira de estações de recarga</div>'
+        '<div style="font-size:1.3rem;font-weight:800;color:#00C9A7">&#9889; eletropostos</div>'
+        '<div style="font-size:0.62rem;color:#6B7280;margin-top:2px">dashboard financeiro</div>'
         '</div>',
         unsafe_allow_html=True
     )
@@ -1607,7 +1606,7 @@ with st.sidebar:
             st.markdown(f'<div style="font-size:0.68rem;color:#F0F2F8;padding:3px 0">&#128196; {f.name}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown('<div style="font-size:0.62rem;color:#6B7280">MODO DE ANALISE</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.62rem;color:#6B7280">modo de analise</div>', unsafe_allow_html=True)
     mode = st.radio("", ["Por estacao (individual)", "Consolidado (todos os arquivos)"],
                     label_visibility="collapsed")
 
@@ -1625,7 +1624,7 @@ with st.sidebar:
 st.markdown(
     '<div style="margin-bottom:1.5rem">'
     '<div class="page-title">Dashboard <span style="color:#00C9A7">Financeiro</span></div>'
-    '<div class="page-subtitle">Análise financeira dos carregadores</div>'
+    '<div class="page-subtitle">Rede de Eletropostos &middot; Analise de transacoes</div>'
     '</div>',
     unsafe_allow_html=True
 )
@@ -1636,7 +1635,6 @@ if not uploaded_files:
         '<div style="font-size:3rem;margin-bottom:1rem">&#9889;</div>'
         '<div style="font-size:1.2rem;font-weight:700;color:#F0F2F8;margin-bottom:0.5rem">Nenhum arquivo carregado</div>'
         '<div style="font-size:0.75rem;line-height:1.7">Use o painel lateral para fazer upload dos arquivos .xlsx de relatorio de recargas.</div>'
-        '<div style="font-size:0.75rem;line-height:1.7">Na aba "Transações" do Intelbras CVE-Pro, realize o filtro dos carregadores sob análise, além do período desejado e exporte clicando em "Download Excel".</div>'
         '</div>',
         unsafe_allow_html=True
     )
