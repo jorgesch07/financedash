@@ -592,7 +592,7 @@ def _fig_to_img(fig, w=900, h=350, lmargin=60):
     layout   = fig_dict.get('layout', {})
 
     # Dimensões em polegadas (72dpi base → 2x = 144dpi final)
-    dpi = 300
+    dpi = 600
     fig_w = w / dpi
     fig_h = h / dpi
 
