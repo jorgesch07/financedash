@@ -589,8 +589,23 @@ def _to_list(val):
     if isinstance(val, dict) and 'bdata' in val:
         dtype_map = {'f4':'float32','f8':'float64','i2':'int16',
                      'i4':'int32','i8':'int64','u1':'uint8'}
-        dt = dtype_map.get(val.get('dtype','f8'), 'float64')
-        return np.frombuffer(b64.b64decode(val['bdata']), dtype=dt).tolist()
+        dt_str = val.get('dtype', 'f8')
+        dt = dtype_map.get(dt_str, 'float64')
+        try:
+            raw = b64.b64decode(val['bdata'])
+            # Ensure buffer is aligned to element size
+            item_size = np.dtype(dt).itemsize
+            if len(raw) % item_size != 0:
+                # Try fallback dtypes
+                for fallback in ['float32', 'int16', 'uint8']:
+                    fs = np.dtype(fallback).itemsize
+                    if len(raw) % fs == 0:
+                        return np.frombuffer(raw, dtype=fallback).tolist()
+                # Last resort: treat as uint8
+                return [float(b) for b in raw]
+            return np.frombuffer(raw, dtype=dt).tolist()
+        except Exception:
+            return []
     if isinstance(val, (list, tuple)):
         out = []
         for v in val:
