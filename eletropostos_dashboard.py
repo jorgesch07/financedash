@@ -577,6 +577,7 @@ def fig_revenue_cost_profit(df, custo_kwh, custo_pct):
 
 
 
+
 def _to_list(val):
     """Converte qualquer valor Plotly para lista Python — trata numpy, bdata, None."""
     import numpy as np
@@ -614,8 +615,21 @@ def _to_floats(val):
     return result
 
 
+def _to_strs(val):
+    """Converte para lista de strings legíveis (formata datas, trunca)."""
+    import datetime
+    result = []
+    for v in _to_list(val):
+        if isinstance(v, (datetime.datetime, datetime.date)):
+            result.append(v.strftime('%d/%m'))
+        elif v is None:
+            result.append('')
+        else:
+            result.append(str(v)[:14])
+    return result
+
+
 def _rgba_to_hex(c):
-    """Converte rgba(...) ou rgb(...) para hex. Retorna None se inválido."""
     if not isinstance(c, str):
         return None
     c = c.strip()
@@ -623,29 +637,26 @@ def _rgba_to_hex(c):
         return c
     if c.startswith('rgba') or c.startswith('rgb'):
         try:
-            inner = c[c.index('(')+1 : c.rindex(')')]
-            parts = inner.split(',')
-            r,g,b = int(float(parts[0])), int(float(parts[1])), int(float(parts[2]))
-            return f'#{r:02x}{g:02x}{b:02x}'
+            inner = c[c.index('(')+1:c.rindex(')')]
+            p = inner.split(',')
+            return f'#{int(float(p[0])):02x}{int(float(p[1])):02x}{int(float(p[2])):02x}'
         except Exception:
             return None
     return None
 
 
 def _safe_color(mc, default='#888888'):
-    """Extrai uma cor matplotlib segura de qualquer valor marker.color."""
     import numpy as np
     if mc is None or isinstance(mc, (np.ndarray, bool)):
         return default
-    if isinstance(mc, dict):            # bdata serializado
+    if isinstance(mc, dict):
         return default
     if isinstance(mc, str):
         h = _rgba_to_hex(mc)
         return h if h else default
     if isinstance(mc, (list, tuple)) and len(mc) > 0:
-        # lista de cores? pega a primeira válida
         first = mc[0]
-        if not isinstance(first, str):  # lista numérica → colorscale
+        if not isinstance(first, str):
             return default
         h = _rgba_to_hex(first)
         return h if h else default
@@ -653,14 +664,12 @@ def _safe_color(mc, default='#888888'):
 
 
 def _color_list(mc, n, palette):
-    """Retorna lista de n cores hex válidas para matplotlib."""
     import numpy as np
     if mc is None or isinstance(mc, (np.ndarray, dict)):
         return [palette[i % len(palette)] for i in range(n)]
     if isinstance(mc, str):
         h = _rgba_to_hex(mc)
-        c = h if h else palette[0]
-        return [c] * n
+        return [h if h else palette[0]] * n
     if isinstance(mc, (list, tuple)):
         result = []
         for item in mc:
@@ -673,10 +682,7 @@ def _color_list(mc, n, palette):
 
 
 def _fig_to_img(fig, w=900, h=350, lmargin=60):
-    """
-    Converte figura Plotly → PNG via matplotlib puro.
-    Não usa kaleido/Chrome. Funciona em qualquer servidor.
-    """
+    """Converte figura Plotly → PNG via matplotlib. Funciona sem Chrome/kaleido."""
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -686,7 +692,6 @@ def _fig_to_img(fig, w=900, h=350, lmargin=60):
     PALETTE = ['#00C9A7','#0088FE','#FF6B6B','#FFD93D',
                '#A855F7','#F97316','#06B6D4','#84CC16']
 
-    # Serializa a figura para dict puro (elimina qualquer numpy residual)
     try:
         fig_dict = fig.to_dict()
     except Exception:
@@ -697,13 +702,14 @@ def _fig_to_img(fig, w=900, h=350, lmargin=60):
     if not traces:
         return None
 
-    # Detecta tipo dominante
-    types   = [t.get('type', 'bar') for t in traces]
-    orient  = [t.get('orientation','v') for t in traces]
-    is_h    = 'h' in orient
-    is_pie  = 'pie' in types
-    is_fun  = 'funnel' in types
-    is_line = any(tp in ('scatter','scattergl') for tp in types)
+    types  = [t.get('type', 'bar') for t in traces]
+    orient = [t.get('orientation', 'v') for t in traces]
+    is_h   = 'h' in orient
+    is_pie = 'pie' in types
+    is_fun = 'funnel' in types
+    is_line = any(tp in ('scatter', 'scattergl') for tp in types)
+    # Secondary y-axis: any trace with yaxis='y2'
+    has_y2 = any(t.get('yaxis') == 'y2' for t in traces)
 
     dpi = 110
     mfig, ax = plt.subplots(figsize=(w/dpi, h/dpi), dpi=dpi)
@@ -711,7 +717,8 @@ def _fig_to_img(fig, w=900, h=350, lmargin=60):
     ax.set_facecolor('#F8F9FA')
     ax.tick_params(colors='#444', labelsize=8)
     for sp in ax.spines.values():
-        sp.set_color('#CCCCCC'); sp.set_linewidth(0.5)
+        sp.set_color('#CCCCCC')
+        sp.set_linewidth(0.5)
 
     fmt_money = plt.FuncFormatter(
         lambda v, _: f'R${v/1000:.0f}k' if abs(v) >= 1000 else f'{int(v):,}')
@@ -725,21 +732,17 @@ def _fig_to_img(fig, w=900, h=350, lmargin=60):
         buf.seek(0)
         return buf.read()
 
-    # ── PIE / DONUT ──────────────────────────────────────────────────────────
+    # ── PIE ──────────────────────────────────────────────────────────────────
     if is_pie:
         ax.set_visible(False)
         aax = mfig.add_axes([0.05, 0.05, 0.55, 0.9])
         aax.set_facecolor('white')
         t    = traces[0]
-        raw_v = t.get('values')
-        if raw_v is None:
-            raw_v = t.get('y')
-        vals = _to_floats(raw_v)
-        raw_l = t.get('labels')
-        if raw_l is None:
-            raw_l = t.get('x')
-        lbls = [str(l) for l in _to_list(raw_l)]
-        clrs = _color_list(t.get('marker', {}).get('colors'), len(vals), PALETTE)
+        raw_v = t.get('values') if t.get('values') is not None else t.get('y')
+        vals  = _to_floats(raw_v)
+        raw_l = t.get('labels') if t.get('labels') is not None else t.get('x')
+        lbls  = _to_strs(raw_l)
+        clrs  = _color_list(t.get('marker', {}).get('colors'), len(vals), PALETTE)
         if not vals or sum(vals) == 0:
             return save_fig()
         hole = 0.0
@@ -754,7 +757,8 @@ def _fig_to_img(fig, w=900, h=350, lmargin=60):
                             edgecolor='white', linewidth=1.5),
             startangle=90)
         for at in auts:
-            at.set_fontsize(8); at.set_color('white')
+            at.set_fontsize(8)
+            at.set_color('white')
         patches = [mpatches.Patch(color=c, label=l[:30])
                    for l, c in zip(lbls, clrs)]
         mfig.legend(handles=patches, loc='center right',
@@ -769,13 +773,14 @@ def _fig_to_img(fig, w=900, h=350, lmargin=60):
     if is_fun:
         t     = traces[0]
         xv    = _to_floats(t.get('x'))
-        ylbls = [str(l) for l in _to_list(t.get('y'))]
+        ylbls = _to_strs(t.get('y'))
         maxv  = max(xv) if xv else 1
         clrs  = [PALETTE[i % len(PALETTE)] for i in range(len(xv))]
         bars  = ax.barh(ylbls, xv, color=clrs, height=0.5, zorder=3)
         ax.invert_yaxis()
         ax.set_xlim(0, maxv * 1.2)
-        ax.xaxis.set_visible(False); ax.grid(False)
+        ax.xaxis.set_visible(False)
+        ax.grid(False)
         for bar, val in zip(bars, xv):
             ax.text(bar.get_width() + maxv * 0.01,
                     bar.get_y() + bar.get_height() / 2,
@@ -786,17 +791,19 @@ def _fig_to_img(fig, w=900, h=350, lmargin=60):
     if is_h:
         ax.grid(axis='x', color='#E8E8E8', linewidth=0.5, zorder=0)
         ax.grid(axis='y', visible=False)
-        all_lbls = [str(l) for l in _to_list(traces[0].get('y'))]
+        all_lbls = _to_strs(traces[0].get('y'))
         n, n_tr  = len(all_lbls), len(traces)
-        bar_h = 0.7 / max(n_tr, 1)
-        y_pos = np.arange(n)
-        offs  = np.linspace(-(n_tr-1)/2, (n_tr-1)/2, n_tr) * bar_h
-        patches = []
+        bar_h    = 0.7 / max(n_tr, 1)
+        y_pos    = np.arange(n)
+        offs     = np.linspace(-(n_tr-1)/2, (n_tr-1)/2, n_tr) * bar_h
+        patches  = []
         for i, t in enumerate(traces):
-            xv = _to_floats(t.get('x'))
-            c  = _safe_color(t.get('marker', {}).get('color'), PALETTE[i % len(PALETTE)])
-            ax.barh(y_pos + offs[i], xv[:n], height=bar_h * 0.88,
-                    color=c, zorder=3)
+            xv = _to_floats(t.get('x'))[:n]
+            # pad if shorter
+            while len(xv) < n:
+                xv.append(0.0)
+            c = _safe_color(t.get('marker', {}).get('color'), PALETTE[i % len(PALETTE)])
+            ax.barh(y_pos + offs[i], xv, height=bar_h * 0.88, color=c, zorder=3)
             patches.append(mpatches.Patch(color=c, label=str(t.get('name') or '')[:25]))
         ax.set_yticks(y_pos)
         ax.set_yticklabels([l[:40] for l in all_lbls], fontsize=8)
@@ -806,30 +813,65 @@ def _fig_to_img(fig, w=900, h=350, lmargin=60):
             ax.legend(handles=patches, fontsize=7, frameon=False, loc='lower right')
         return save_fig()
 
-    # ── LINE / SCATTER ───────────────────────────────────────────────────────
-    if is_line:
+    # ── LINE / SCATTER (with or without secondary y-axis) ────────────────────
+    if is_line or has_y2:
+        ax2 = ax.twinx() if has_y2 else None
+        if ax2:
+            ax2.tick_params(colors='#444', labelsize=8)
+            for sp in ax2.spines.values():
+                sp.set_color('#CCCCCC')
+                sp.set_linewidth(0.5)
         ax.grid(axis='y', color='#E8E8E8', linewidth=0.5, zorder=0)
+
+        # Build unified x-axis labels from the longest trace
+        all_x_strs = []
+        for t in traces:
+            xs = _to_strs(t.get('x'))
+            if len(xs) > len(all_x_strs):
+                all_x_strs = xs
+        n_x = len(all_x_strs)
+
         for i, t in enumerate(traces):
-            yv  = _to_floats(t.get('y'))
-            xs  = list(range(len(yv)))
-            lc  = (t.get('line') or {}).get('color', '')
-            c   = _rgba_to_hex(str(lc)) or PALETTE[i % len(PALETTE)]
-            ls  = '--' if (t.get('line') or {}).get('dash') else '-'
-            ax.plot(xs, yv, color=c, linewidth=1.5, linestyle=ls,
-                    label=str(t.get('name') or '')[:25], zorder=3)
-            if t.get('fill') == 'tozeroy':
-                ax.fill_between(xs, yv, alpha=0.07, color=c)
+            yv   = _to_floats(t.get('y'))
+            n_yv = len(yv)
+            xs   = list(range(n_yv))
+            lc   = (t.get('line') or {}).get('color', '')
+            c    = _rgba_to_hex(str(lc)) or PALETTE[i % len(PALETTE)]
+            ls   = '--' if (t.get('line') or {}).get('dash') else '-'
+            tp   = t.get('type', 'scatter')
+            use_ax = ax2 if (ax2 and t.get('yaxis') == 'y2') else ax
+
+            if tp == 'bar':
+                # bar on secondary axis (e.g. fig_weekly sessions)
+                xv = _to_floats(t.get('y'))  # already y values
+                x_pos = np.arange(n_yv)
+                use_ax.bar(x_pos, yv, color=c, alpha=0.5, width=0.4, zorder=2,
+                           label=str(t.get('name') or '')[:25])
+            else:
+                use_ax.plot(xs, yv, color=c, linewidth=1.5, linestyle=ls,
+                            label=str(t.get('name') or '')[:25], zorder=3)
+                if t.get('fill') == 'tozeroy':
+                    use_ax.fill_between(xs, yv, alpha=0.07, color=c)
+
         ax.yaxis.set_major_formatter(fmt_money)
-        x_lbls = [str(v)[:10] for v in _to_list(traces[0].get('x'))]
-        step = max(1, len(x_lbls) // 8)
-        ax.set_xticks(range(0, len(x_lbls), step))
-        ax.set_xticklabels(x_lbls[::step], rotation=30, ha='right', fontsize=8)
-        if len(traces) > 1:
-            ax.legend(fontsize=7, frameon=False, loc='upper left')
+        if ax2:
+            ax2.yaxis.set_major_formatter(fmt_money)
+
+        step = max(1, n_x // 8)
+        ax.set_xticks(range(0, n_x, step))
+        ax.set_xticklabels(all_x_strs[::step], rotation=30, ha='right', fontsize=8)
+
+        # Combine legends from both axes
+        handles, labels = ax.get_legend_handles_labels()
+        if ax2:
+            h2, l2 = ax2.get_legend_handles_labels()
+            handles += h2; labels += l2
+        if len(handles) > 1:
+            ax.legend(handles, labels, fontsize=7, frameon=False, loc='upper left')
         return save_fig()
 
     # ── VERTICAL BARS ────────────────────────────────────────────────────────
-    all_x   = [str(v) for v in _to_list(traces[0].get('x'))]
+    all_x   = _to_strs(traces[0].get('x'))
     n       = len(all_x)
     n_tr    = len(traces)
     x_pos   = np.arange(n)
@@ -841,17 +883,21 @@ def _fig_to_img(fig, w=900, h=350, lmargin=60):
     if barmode == 'stack':
         bottoms = np.zeros(n)
         for i, t in enumerate(traces):
-            yv = _to_floats(t.get('y'))
-            c  = _safe_color(t.get('marker', {}).get('color'), PALETTE[i % len(PALETTE)])
-            ax.bar(x_pos, yv[:n], bottom=bottoms[:n], color=c,
-                   width=0.6, zorder=3, label=str(t.get('name') or '')[:25])
-            bottoms[:n] += np.array(yv[:n])
+            yv = _to_floats(t.get('y'))[:n]
+            while len(yv) < n:
+                yv.append(0.0)
+            c = _safe_color(t.get('marker', {}).get('color'), PALETTE[i % len(PALETTE)])
+            ax.bar(x_pos, yv, bottom=bottoms, color=c, width=0.6,
+                   zorder=3, label=str(t.get('name') or '')[:25])
+            bottoms += np.array(yv)
             patches.append(mpatches.Patch(color=c, label=str(t.get('name') or '')[:25]))
     else:
         for i, t in enumerate(traces):
-            yv = _to_floats(t.get('y'))
-            c  = _safe_color(t.get('marker', {}).get('color'), PALETTE[i % len(PALETTE)])
-            ax.bar(x_pos + offs[i], yv[:n], width=bar_w * 0.9,
+            yv = _to_floats(t.get('y'))[:n]
+            while len(yv) < n:
+                yv.append(0.0)
+            c = _safe_color(t.get('marker', {}).get('color'), PALETTE[i % len(PALETTE)])
+            ax.bar(x_pos + offs[i], yv, width=bar_w * 0.9,
                    color=c, zorder=3, label=str(t.get('name') or '')[:25])
             patches.append(mpatches.Patch(color=c, label=str(t.get('name') or '')[:25]))
 
@@ -1397,35 +1443,35 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 
     # ── RECEITA DIARIA ────────────────────────────────────────────────────────
     section("Receita Diaria")
-    st.plotly_chart(fig_daily(dfs), width='stretch')
+    st.plotly_chart(fig_daily(dfs), use_container_width=True)
 
     # ── HORARIO + FUNIL ───────────────────────────────────────────────────────
     ca, cb = st.columns([3, 2])
     with ca:
         section("Distribuicao Horaria de Sessoes")
         st.plotly_chart(fig_hourly(dfs if is_consolidated else {list(dfs.keys())[0]: df}),
-                        width='stretch')
+                        use_container_width=True)
     with cb:
         section("Funil de Conversao")
-        st.plotly_chart(fig_funnel(kpis), width='stretch')
+        st.plotly_chart(fig_funnel(kpis), use_container_width=True)
 
     # ── MEIOS DE PAGAMENTO + CONECTORES ───────────────────────────────────────
     cc, cd = st.columns(2)
     with cc:
         section("Meios de Pagamento")
-        st.plotly_chart(fig_payment(df, color), width='stretch')
+        st.plotly_chart(fig_payment(df, color), use_container_width=True)
     with cd:
         section("Conectores (Sessoes e Receita)")
-        st.plotly_chart(fig_connectors(df), width='stretch')
+        st.plotly_chart(fig_connectors(df), use_container_width=True)
 
     # ── DURACAO + SEMANAL ─────────────────────────────────────────────────────
     ce, cf = st.columns(2)
     with ce:
         section("Duracao das Sessoes com Ticket Medio")
-        st.plotly_chart(fig_duration(df, color), width='stretch')
+        st.plotly_chart(fig_duration(df, color), use_container_width=True)
     with cf:
         section("Evolucao Semanal (Receita e Sessoes)")
-        st.plotly_chart(fig_weekly(df, color), width='stretch')
+        st.plotly_chart(fig_weekly(df, color), use_container_width=True)
 
     # ── TOP ESTACOES ──────────────────────────────────────────────────────────
     col_est = 'Estação' if 'Estação' in df.columns else 'Estacao'
@@ -1434,23 +1480,23 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         cg, ch = st.columns(2)
         with cg:
             section("Top 15 Estacoes por Receita")
-            st.plotly_chart(fig_top_stations(df, top_n=n_stations), width='stretch')
+            st.plotly_chart(fig_top_stations(df, top_n=n_stations), use_container_width=True)
         with ch:
             section("Top 15 Estacoes por Sessoes/Dia")
-            st.plotly_chart(fig_top_stations_by_sessions(df, top_n=n_stations), width='stretch')
+            st.plotly_chart(fig_top_stations_by_sessions(df, top_n=n_stations), use_container_width=True)
 
         section("Taxa de Ocupacao — Top 15 Carregadores Mais Ocupados")
         st.caption("Ocupacao = tempo total em uso / (dias * 24h). Verde > 80%, Azul 50-80%, Vermelho < 50%.")
-        st.plotly_chart(fig_occupancy(df, top_n=n_stations), width='stretch')
+        st.plotly_chart(fig_occupancy(df, top_n=n_stations), use_container_width=True)
 
     # ── DIA DA SEMANA ─────────────────────────────────────────────────────────
     ci, cj = st.columns(2)
     with ci:
         section("Receita por Dia da Semana")
-        st.plotly_chart(fig_weekday_revenue(df, color), width='stretch')
+        st.plotly_chart(fig_weekday_revenue(df, color), use_container_width=True)
     with cj:
         section("Sessoes por Dia da Semana")
-        st.plotly_chart(fig_weekday_sessions(df, color), width='stretch')
+        st.plotly_chart(fig_weekday_sessions(df, color), use_container_width=True)
 
     # ── RECEITA VS CUSTO VS LUCRO ─────────────────────────────────────────────
     section("Receita vs Custo vs Lucro")
@@ -1466,7 +1512,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     with ck3: kpi_card("Lucro Total", f"R$ {total_l:,.0f}", f"Margem {margem:.1f}%", COLORS[1])
     with ck4: kpi_card("Lucro/Dia", f"R$ {total_l/max(kpis['days'],1):,.0f}", "media do periodo", COLORS[3])
     st.markdown("<br>", unsafe_allow_html=True)
-    st.plotly_chart(fig_cost, width='stretch')
+    st.plotly_chart(fig_cost, use_container_width=True)
 
     # ── RECEITA POR ORIGEM ────────────────────────────────────────────────────
     section("Receita por Origem")
@@ -1489,13 +1535,13 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 
     col_pie, col_bar = st.columns([1, 2])
     with col_pie:
-        st.plotly_chart(fig_revenue_sources(df, color), width='stretch')
+        st.plotly_chart(fig_revenue_sources(df, color), use_container_width=True)
     with col_bar:
-        st.plotly_chart(fig_revenue_sources_bar(df, color), width='stretch')
+        st.plotly_chart(fig_revenue_sources_bar(df, color), use_container_width=True)
 
     # ── SEGMENTACAO USUARIOS ──────────────────────────────────────────────────
     section("Segmentacao de Usuarios e Receita por Segmento")
-    st.plotly_chart(fig_users(df, color, kpis['tag_col']), width='stretch')
+    st.plotly_chart(fig_users(df, color, kpis['tag_col']), use_container_width=True)
 
     # ── INSIGHTS ──────────────────────────────────────────────────────────────
     section("Insights e Oportunidades")
@@ -1532,7 +1578,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
                 'kWh Total': f"{k['energy_kwh']:,.0f}",
                 'Proj. Anual': f"R$ {k['proj_annual']:,.0f}",
             })
-        st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     # ── DRE SEMANAL (transposta: indicadores=linhas, semanas=colunas) ────────────
     section("DRE — Demonstrativo de Resultado por Semana")
@@ -1615,7 +1661,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     pdf_label = "Arquivo 01" if anon else list(dfs.keys())[0] if len(dfs)==1 else "Consolidado"
     btn_key = f"pdf_btn_{pdf_label.replace(' ','_').replace('/','_')}"
     dl_key  = f"pdf_dl_{pdf_label.replace(' ','_').replace('/','_')}"
-    if st.button("Gerar PDF do Dashboard", type="primary", width='stretch', key=btn_key):
+    if st.button("Gerar PDF do Dashboard", type="primary", use_container_width=True, key=btn_key):
         with st.spinner("Gerando PDF com graficos..."):
             pdf_bytes = generate_pdf(df, kpis, custo_kwh, custo_pct,
                                      dfs=dfs, color=color, title=pdf_label)
@@ -1625,7 +1671,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
                 data=pdf_bytes,
                 file_name=f"relatorio_eletropostos_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.pdf",
                 mime="application/pdf",
-                width='stretch',
+                use_container_width=True,
                 key=dl_key,
             )
         else:
