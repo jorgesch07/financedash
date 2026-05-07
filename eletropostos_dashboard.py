@@ -524,7 +524,7 @@ def fig_weekday_sessions(df, color):
     fig.update_yaxes(gridcolor='#1E2330', linecolor='#1E2330')
     return fig
 
-def fig_occupancy(df, top_n=15):
+def fig_occupancy(df, top_n=15, horas_dia=24):
     col_est = 'Estacao' if 'Estacao' in df.columns else 'Estacao'
     for c in ['Estação', 'Estacao']:
         if c in df.columns:
@@ -533,9 +533,10 @@ def fig_occupancy(df, top_n=15):
     else:
         return go.Figure()
     days = df['data'].nunique() or 1
+    minutos_disponiveis = days * horas_dia * 60
     occ = (df.groupby(col_est)
              .agg(sessions=('Receita(R$)','count'), total_min=('duracao_min','sum'))
-             .assign(occupancy_pct=lambda x: (x['total_min'] / (days * 24 * 60) * 100).clip(0, 100))
+             .assign(occupancy_pct=lambda x: (x['total_min'] / minutos_disponiveis * 100).clip(0, 100))
              .sort_values('occupancy_pct', ascending=True)
              .tail(top_n))
     bar_colors = ['#00C9A7' if v >= 80 else '#0088FE' if v >= 50 else '#FF6B6B' for v in occ['occupancy_pct']]
@@ -546,7 +547,9 @@ def fig_occupancy(df, top_n=15):
         textposition='outside', textfont=dict(size=9),
     ))
     fig.update_layout(**PLOTLY_LAYOUT, height=max(250, top_n*28))
-    fig.update_layout(showlegend=False)
+    fig.update_layout(showlegend=False,
+                      title=dict(text=f'Base: {horas_dia}h/dia disponivel',
+                                 font=dict(size=9, color='#6B7280'), x=1, xanchor='right') if horas_dia < 24 else {})
     fig.update_xaxes(ticksuffix='%', range=[0, 115], gridcolor='#1E2330', linecolor='#1E2330')
     fig.update_yaxes(tickfont=dict(size=9), gridcolor='#1E2330', linecolor='#1E2330')
     return fig
@@ -656,7 +659,7 @@ def _fig_to_img(fig, w=1100, h=420):
 
 
 
-def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio"):
+def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", horas_dia=24):
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.lib import colors as rl_colors
@@ -848,7 +851,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio"):
 
             story.append(PageBreak())
             story += section_hdr('TAXA DE OCUPACAO — TOP 15 CARREGADORES')
-            story.append(chart(fig_occupancy(df, top_n=n_st), h_cm=h_st))
+            story.append(chart(fig_occupancy(df, top_n=n_st, horas_dia=horas_dia), h_cm=h_st))
             story.append(Spacer(1, 10))
 
         story += section_hdr('SEGMENTACAO DE USUARIOS')
@@ -1107,7 +1110,7 @@ def build_dre_table(df, custo_kwh, custo_pct):
     return weekly
 
 
-def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct, anon):
+def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct, anon, horas_dia=24):
     """Renderiza todos os KPIs e graficos — identico para modo individual e consolidado."""
 
     # ── ROW 1: 4 cards principais ─────────────────────────────────────────────
@@ -1214,9 +1217,9 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
             section("Top 15 Estacoes por Sessoes/Dia")
             st.plotly_chart(fig_top_stations_by_sessions(df, top_n=n_stations), use_container_width=True)
 
-        section("Taxa de Ocupacao — Top 15 Carregadores Mais Ocupados")
-        st.caption("Ocupacao = tempo total em uso / (dias * 24h). Verde > 80%, Azul 50-80%, Vermelho < 50%.")
-        st.plotly_chart(fig_occupancy(df, top_n=n_stations), use_container_width=True)
+        section(f"Taxa de Ocupacao — Top 15 Carregadores ({horas_dia}h/dia uteis)")
+        st.caption(f"Ocupacao = tempo total em uso / (dias x {horas_dia}h). Verde >80%, Azul 50-80%, Vermelho <50%.")
+        st.plotly_chart(fig_occupancy(df, top_n=n_stations, horas_dia=horas_dia), use_container_width=True)
 
     # ── DIA DA SEMANA ─────────────────────────────────────────────────────────
     ci, cj = st.columns(2)
@@ -1393,7 +1396,8 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     if st.button("Gerar PDF do Dashboard", type="primary", use_container_width=True, key=btn_key):
         with st.spinner("Gerando PDF com graficos..."):
             pdf_bytes = generate_pdf(df, kpis, custo_kwh, custo_pct,
-                                     dfs=dfs, color=color, title=pdf_label)
+                                     dfs=dfs, color=color, title=pdf_label,
+                                     horas_dia=horas_dia)
         if pdf_bytes and not pdf_bytes[:3].isalpha():
             st.download_button(
                 label="Baixar PDF",
@@ -1445,6 +1449,19 @@ with st.sidebar:
     st.markdown('<div style="font-size:0.62rem;color:#6B7280;margin-bottom:0.5rem">PARAMETROS DE CUSTO</div>', unsafe_allow_html=True)
     custo_kwh = st.number_input("Custo da energia (R$/kWh)", min_value=0.0, value=0.75, step=0.01, format="%.2f")
     custo_pct  = st.number_input("Custo operacional (% da receita)", min_value=0.0, max_value=100.0, value=15.0, step=0.5, format="%.1f")
+
+    st.markdown("---")
+    st.markdown('<div style="font-size:0.62rem;color:#6B7280;margin-bottom:0.5rem">HORARIO DE FUNCIONAMENTO</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.70rem;color:#9CA3AF;margin-bottom:0.5rem">Usado para calcular a taxa de ocupacao real dos carregadores</div>', unsafe_allow_html=True)
+    col_h1, col_h2 = st.columns(2)
+    with col_h1:
+        hora_inicio = st.number_input("Abertura", min_value=0, max_value=23, value=0, step=1,
+                                       help="Hora de abertura do estabelecimento (0 = meia-noite)")
+    with col_h2:
+        hora_fim = st.number_input("Fechamento", min_value=1, max_value=24, value=24, step=1,
+                                    help="Hora de fechamento (24 = meia-noite)")
+    horas_dia = max(1, hora_fim - hora_inicio)
+    st.markdown(f'<div style="font-size:0.68rem;color:#00C9A7;margin-top:2px">&#9201; {horas_dia}h disponiveis/dia</div>', unsafe_allow_html=True)
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 st.markdown(
@@ -1548,7 +1565,7 @@ if _selected_connector and _col_conn:
 if mode == "Consolidado (todos os arquivos)" or len(dfs) == 1:
     kpis = compute_kpis(df_all)
     render_dashboard(df_all, dfs, kpis, ACCENT, is_consolidated=True,
-                     custo_kwh=custo_kwh, custo_pct=custo_pct, anon=anon)
+                     custo_kwh=custo_kwh, custo_pct=custo_pct, anon=anon, horas_dia=horas_dia)
 
 # ─── INDIVIDUAL VIEW ──────────────────────────────────────────────────────────
 else:
@@ -1566,7 +1583,7 @@ else:
                 unsafe_allow_html=True
             )
             render_dashboard(df, {name: df}, kpis, color, is_consolidated=False,
-                             custo_kwh=custo_kwh, custo_pct=custo_pct, anon=anon)
+                             custo_kwh=custo_kwh, custo_pct=custo_pct, anon=anon, horas_dia=horas_dia)
 
 # ─── FOOTER ───────────────────────────────────────────────────────────────────
 st.markdown(
