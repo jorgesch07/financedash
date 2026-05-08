@@ -1461,8 +1461,8 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 with st.sidebar:
     st.markdown(
         '<div style="padding:1rem 0 1.5rem">'
-        '<div style="font-size:1.3rem;font-weight:800;color:#00C9A7">&#9889; eletropostos</div>'
-        '<div style="font-size:0.62rem;color:#6B7280;margin-top:2px">dashboard financeiro</div>'
+        '<div style="font-size:1.3rem;font-weight:800;color:#00C9A7">Dashboard financeiro</div>'
+        '<div style="font-size:0.62rem;color:#6B7280;margin-top:2px">Análise financeira da operação da rede de recarga</div>'
         '</div>',
         unsafe_allow_html=True
     )
