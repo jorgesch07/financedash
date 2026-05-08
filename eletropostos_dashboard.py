@@ -634,7 +634,7 @@ def _plotly_dl(fig, filename: str, key: str) -> None:
     """Exibe gráfico + botão de download PNG 300 DPI.
     Ao clicar, gera o PNG com tema escuro e inicia o download automaticamente."""
     st.plotly_chart(fig, width='stretch')
-    if st.button("⬇ PNG (300 DPI)", key=f"_btn_{key}", width='content'):
+    if st.button("⬇", key=f"_btn_{key}", width='content', help="Baixar PNG (300 DPI)"):
         with st.spinner("Gerando PNG…"):
             try:
                 import json as _j, base64 as _b64
