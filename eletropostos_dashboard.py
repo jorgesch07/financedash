@@ -693,7 +693,7 @@ def _fig_to_img(fig, w=1100, h=420):
     )
     fig2.update_xaxes(gridcolor='#E5E5E5', linecolor='#CCC', tickfont=dict(color='#333', size=11))
     fig2.update_yaxes(gridcolor='#E5E5E5', linecolor='#CCC', tickfont=dict(color='#333', size=11))
-    return fig2.to_image(format='png', width=w, height=h, scale=20)
+    return fig2.to_image(format='png', width=w, height=h, scale=4)
 
 
 
