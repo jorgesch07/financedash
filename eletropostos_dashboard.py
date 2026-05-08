@@ -1006,23 +1006,23 @@ def generate_insights(kpis, df):
     insights = []
     if kpis['pending_rev'] > 0:
         insights.append(('Risco: Pagamentos Pendentes',
-            f"R$ {kpis['pending_rev']:,.2f} em status pending. Revisar integracao de gateway."))
+            f"R$ {kpis['pending_rev']:,.2f} em status pending. Revisar integração de gateway."))
     if kpis['power_rev_pct'] > 60:
-        insights.append(('Concentracao em Power Users',
-            f"{kpis['power_users']} usuarios (5+ sessoes) geram {kpis['power_rev_pct']:.1f}% da receita. "
+        insights.append(('Concentração em Power Users',
+            f"{kpis['power_users']} usuarios (5+ sessões) geram {kpis['power_rev_pct']:.1f}% da receita. "
             f"Programa de fidelidade pode reduzir risco de churn."))
     if kpis['unique_users'] > 0 and kpis['one_time'] / kpis['unique_users'] > 0.5:
         pct = kpis['one_time'] / kpis['unique_users'] * 100
-        insights.append(('Alta taxa de usuarios one-time',
-            f"{kpis['one_time']} ({pct:.0f}%) usuarios vieram apenas uma vez. "
-            f"Estrategia de ativacao pos-primeira-sessao pode aumentar retencao."))
+        insights.append(('Alta taxa de usuários one-time',
+            f"{kpis['one_time']} ({pct:.0f}%) usuários vieram apenas uma vez. "
+            f"Estratégia de ativação após a primeira-sessão pode aumentar retenção."))
     if kpis['idle_fee'] > 0:
         insights.append(('Idle Fee ativo',
             f"R$ {kpis['idle_fee']:,.2f} coletados em {kpis['idle_sessions']} sessoes por ociosidade."))
     if kpis['rejection_rate'] > 5:
-        insights.append(('Taxa de reprovacao elevada',
-            f"{kpis['rejection_rate']:.1f}% dos pagamentos foram reprovados ({kpis['not_paid']} sessoes). "
-            f"Verificar gateway e meios de pagamento disponiveis."))
+        insights.append(('Taxa de reprovação elevada',
+            f"{kpis['rejection_rate']:.1f}% dos pagamentos foram reprovados ({kpis['not_paid']} sessões). "
+            f"Verificar gateway e meios de pagamento disponíveis."))
     daily_rev = df[df['paid']].groupby('data')['Receita(R$)'].sum()
     if len(daily_rev) >= 7:
         first7 = daily_rev.iloc[:7].mean()
@@ -1034,7 +1034,7 @@ def generate_insights(kpis, df):
                     f"Receita da ultima semana (R$ {last7:,.0f}/dia) cresceu {growth:.0f}% "
                     f"vs primeira semana (R$ {first7:,.0f}/dia)."))
             elif growth < -10:
-                insights.append(('Queda na ultima semana',
+                insights.append(('Queda na última semana',
                     f"Receita caiu {abs(growth):.0f}% vs primeira semana. "
                     f"Investigar causa: manutenção, sazonalidade ou falha técnica."))
     insights.append(('Projeção anual',
@@ -1155,14 +1155,14 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     c1,c2,c3,c4 = st.columns(4)
     with c1: kpi_card("Receita Confirmada",
                       f"R$ {kpis['revenue']:,.2f}",
-                      f"{kpis['paid_sessions']:,} sessoes pagas", color)
+                      f"{kpis['paid_sessions']:,} sessões pagas", color)
     with c2: kpi_card("Energia Entregue",
                       f"{kpis['energy_kwh']:,.0f} kWh",
                       f"R$ {kpis['rev_per_kwh']:.2f}/kWh medio", COLORS[1])
-    with c3: kpi_card("Ticket Medio",
+    with c3: kpi_card("Ticket Médio",
                       f"R$ {kpis['avg_ticket']:.2f}",
                       f"{kpis['sessions_per_day']:.1f} sessoes/dia", COLORS[2])
-    with c4: kpi_card("Projecao Anual",
+    with c4: kpi_card("Projeção Anual",
                       f"R$ {kpis['proj_annual']:,.0f}",
                       f"baseado em {kpis['days']} dias de dados", COLORS[3])
 
@@ -1257,7 +1257,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 
         col_occ_title, col_occ_help = st.columns([10, 1])
         with col_occ_title:
-            section(f"Taxa de Ocupacao — Top 15 Carregadores ({horas_dia}h/dia uteis)")
+            section(f"Taxa de Ocupação — Top 15 Carregadores ({horas_dia}h/dia uteis)")
     
         st.plotly_chart(fig_occupancy(df, top_n=n_stations, horas_dia=horas_dia), width='stretch')
 
@@ -1361,9 +1361,9 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         semana_cols = [f"Sem {int(w)}" for w in dre['semana']]
 
         total_vals = {
-            'Sessoes Pagas':     f"{int(dre['sessoes'].sum()):,}",
+            'Sessões Pagas':     f"{int(dre['sessoes'].sum()):,}",
             'kWh Entregues':     f"{dre['kwh'].sum():,.1f}",
-            'R$ Inicio Recarga': f"R$ {dre['r_inicio'].sum():,.2f}",
+            'R$ Início Recarga': f"R$ {dre['r_inicio'].sum():,.2f}",
             'R$ Energia (kWh)':  f"R$ {dre['r_kwh_rec'].sum():,.2f}",
             'R$ Ociosidade':     f"R$ {dre['r_ocio'].sum():,.2f}",
             'RECEITA TOTAL':     f"R$ {dre['receita_total'].sum():,.2f}",
@@ -1375,9 +1375,9 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         }
 
         indicadores = [
-            ('Sessoes Pagas',     [f"{int(r['sessoes']):,}"           for _,r in dre.iterrows()], ''),
+            ('Sessões Pagas',     [f"{int(r['sessoes']):,}"           for _,r in dre.iterrows()], ''),
             ('kWh Entregues',     [f"{r['kwh']:,.1f}"                  for _,r in dre.iterrows()], ''),
-            ('R$ Inicio Recarga', [f"R$ {r['r_inicio']:,.2f}"          for _,r in dre.iterrows()], ''),
+            ('R$ Início Recarga', [f"R$ {r['r_inicio']:,.2f}"          for _,r in dre.iterrows()], ''),
             ('R$ Energia (kWh)',  [f"R$ {r['r_kwh_rec']:,.2f}"         for _,r in dre.iterrows()], ''),
             ('R$ Ociosidade',     [f"R$ {r['r_ocio']:,.2f}"            for _,r in dre.iterrows()], ''),
             ('RECEITA TOTAL',     [f"R$ {r['receita_total']:,.2f}"     for _,r in dre.iterrows()], 'receita'),
@@ -1429,12 +1429,12 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ── EXPORTAR PDF ──────────────────────────────────────────────────────────
-    section("Exportar Relatorio")
+    section("Exportar Relatório")
     pdf_label = "Arquivo 01" if anon else list(dfs.keys())[0] if len(dfs)==1 else "Consolidado"
     btn_key = f"pdf_btn_{pdf_label.replace(' ','_').replace('/','_')}"
     dl_key  = f"pdf_dl_{pdf_label.replace(' ','_').replace('/','_')}"
     if st.button("Gerar PDF do Dashboard", type="primary", width='stretch', key=btn_key):
-        with st.spinner("Gerando PDF com graficos..."):
+        with st.spinner("Gerando PDF com gráficos..."):
             pdf_bytes = generate_pdf(df, kpis, custo_kwh, custo_pct,
                                      dfs=dfs, color=color, title=pdf_label,
                                      horas_dia=horas_dia)
@@ -1465,7 +1465,7 @@ with st.sidebar:
 
     uploaded_files = st.file_uploader(
         "Carregar arquivos .xlsx", type=["xlsx"], accept_multiple_files=True,
-        help="Arquivos de relatorio de recargas no mesmo formato exportado pelo sistema."
+        help="Arquivos de relatório de recargas no mesmo formato exportado pelo sistema."
     )
 
     st.markdown("---")
@@ -1491,15 +1491,15 @@ with st.sidebar:
     custo_pct  = st.number_input("Custo operacional (% da receita)", min_value=0.0, max_value=100.0, value=15.0, step=0.5, format="%.1f")
 
     st.markdown("---")
-    st.markdown('<div style="font-size:0.62rem;color:#6B7280;margin-bottom:0.5rem">HORARIO DE FUNCIONAMENTO</div>', unsafe_allow_html=True)
-    st.markdown('<div style="font-size:0.70rem;color:#9CA3AF;margin-bottom:0.5rem">Usado para calcular a taxa de ocupacao real dos carregadores</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.62rem;color:#6B7280;margin-bottom:0.5rem">HORÁRIO DE FUNCIONAMENTO</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.70rem;color:#9CA3AF;margin-bottom:0.5rem">Usado para calcular a taxa de ocupação real dos carregadores</div>', unsafe_allow_html=True)
     col_h1, col_h2 = st.columns(2)
     with col_h1:
-        hora_inicio = st.number_input("Abertura (h)", min_value=0, max_value=23, value=0, step=1,
-                                       help="Hora de abertura do estabelecimento (0 = meia-noite)")
+        hora_inicio = st.number_input("Abertura", min_value=0, max_value=23, value=0, step=1,
+                                       help="Horário de abertura do estabelecimento (0 = meia-noite)")
     with col_h2:
-        hora_fim = st.number_input("Fechamento (h)", min_value=1, max_value=24, value=24, step=1,
-                                    help="Hora de fechamento (24 = meia-noite)")
+        hora_fim = st.number_input("Fechamento", min_value=1, max_value=24, value=24, step=1,
+                                    help="Horário de fechamento (24 = meia-noite)")
     horas_dia = max(1, hora_fim - hora_inicio)
     st.markdown(f'<div style="font-size:0.68rem;color:#00C9A7;margin-top:2px">&#9201; {horas_dia}h disponiveis/dia</div>', unsafe_allow_html=True)
 
