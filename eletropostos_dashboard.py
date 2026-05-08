@@ -1698,26 +1698,41 @@ _station_options   = sorted(df_all[_col_est].dropna().unique().tolist())  if _co
 # Filtros nativos na sidebar — causam soft-rerun preservando o arquivo carregado
 _selected_connector = ""
 _selected_station   = ""
+_date_min_all = df_all['data'].min()
+_date_max_all = df_all['data'].max()
+_selected_dates = (_date_min_all, _date_max_all)
 
 with st.sidebar:
-    if _connector_options or _station_options:
-        st.markdown("---")
-        st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">FILTROS</div>',
-                    unsafe_allow_html=True)
-        if _connector_options:
-            _conn_choice = st.selectbox(
-                "Conector", ["Todos os conectores"] + _connector_options,
-                index=0, key="filter_connector"
-            )
-            _selected_connector = "" if _conn_choice == "Todos os conectores" else _conn_choice
-        if _station_options:
-            _stat_choice = st.selectbox(
-                "Estação", ["Todas as estações"] + _station_options,
-                index=0, key="filter_station"
-            )
-            _selected_station = "" if _stat_choice == "Todas as estações" else _stat_choice
+    st.markdown("---")
+    st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">FILTROS</div>',
+                unsafe_allow_html=True)
+    _date_range = st.date_input(
+        "Período",
+        value=(_date_min_all, _date_max_all),
+        min_value=_date_min_all,
+        max_value=_date_max_all,
+        key="filter_dates",
+    )
+    if isinstance(_date_range, (list, tuple)) and len(_date_range) == 2:
+        _selected_dates = (_date_range[0], _date_range[1])
+    if _connector_options:
+        _conn_choice = st.selectbox(
+            "Conector", ["Todos os conectores"] + _connector_options,
+            index=0, key="filter_connector"
+        )
+        _selected_connector = "" if _conn_choice == "Todos os conectores" else _conn_choice
+    if _station_options:
+        _stat_choice = st.selectbox(
+            "Estação", ["Todas as estações"] + _station_options,
+            index=0, key="filter_station"
+        )
+        _selected_station = "" if _stat_choice == "Todas as estações" else _stat_choice
 
 # Aplica filtros em df_all e em cada dfs
+_d0, _d1 = _selected_dates
+df_all = df_all[(df_all['data'] >= _d0) & (df_all['data'] <= _d1)]
+dfs = {k: v[(v['data'] >= _d0) & (v['data'] <= _d1)] for k, v in dfs.items()}
+
 if _selected_connector and _col_conn:
     df_all = df_all[df_all[_col_conn] == _selected_connector]
     dfs = {k: v[v[_col_conn] == _selected_connector] if _col_conn in v.columns else v
