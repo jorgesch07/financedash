@@ -693,7 +693,7 @@ def _fig_to_img(fig, w=1100, h=420):
     )
     fig2.update_xaxes(gridcolor='#E5E5E5', linecolor='#CCC', tickfont=dict(color='#333', size=11))
     fig2.update_yaxes(gridcolor='#E5E5E5', linecolor='#CCC', tickfont=dict(color='#333', size=11))
-    return fig2.to_image(format='png', width=w, height=h, scale=8)
+    return fig2.to_image(format='png', width=w, height=h, scale=4)
 
 
 
@@ -1272,8 +1272,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         st.plotly_chart(fig_weekday_revenue(df, color), width='stretch')
     with cj:
         section("Sessoes por Dia da Semana")
-        st.plotly_chart(fig_weekday_sessions(df, color), width='stretch').write_image("fig1.png")
-        
+        st.plotly_chart(fig_weekday_sessions(df, color), width='stretch')
 
     # ── RECEITA VS CUSTO VS LUCRO ─────────────────────────────────────────────
     section("Receita vs Custo vs Lucro")
