@@ -288,7 +288,7 @@ def compute_kpis(df):
         kwh_per_day=kwh_total/days,
         sessions_per_day=len(df)/days, days=days,
         conversion=len(paid)/attempts*100 if attempts else 0,
-        approval=len(paid)/len(df)*100,
+        approval=len(paid)/len(df)*100 if len(df) else 0,
         rejection_rate=(df['Pago?'].eq('nao').sum()/max(attempts,1))*100,
         unique_users=user_counts.shape[0],
         one_time=(user_counts==1).sum(),
