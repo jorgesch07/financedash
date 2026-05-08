@@ -634,7 +634,7 @@ def _plotly_dl(fig, filename: str, key: str) -> None:
     """Exibe gráfico + botão de download PNG 300 DPI.
     Ao clicar, gera o PNG com tema escuro e inicia o download automaticamente."""
     st.plotly_chart(fig, width='stretch')
-    if st.button("⬇ PNG (300 DPI)", key=f"_btn_{key}"):
+    if st.button("⬇ PNG (300 DPI)", key=f"_btn_{key}", width='content'):
         with st.spinner("Gerando PNG…"):
             try:
                 import json as _j, base64 as _b64
@@ -877,7 +877,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
             ['Lucro total', f"R$ {total_l:,.2f}",
              'Margem líquida', f"{margem:.1f}%"],
         ]))
-        story.append(Spacer(1, 16))
+        story.append(Spacer(1, 30))
 
         # ── DRE SEMANAL (logo após análise de custos) ─────────────────────────
         story += section_hdr('DRE — DEMONSTRATIVO DE RESULTADO POR SEMANA')
