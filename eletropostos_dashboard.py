@@ -1175,35 +1175,35 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 
     # ── RECEITA DIARIA ────────────────────────────────────────────────────────
     section("Receita Diaria")
-    st.plotly_chart(fig_daily(dfs), use_container_width=True)
+    st.plotly_chart(fig_daily(dfs), width='stretch')
 
     # ── HORARIO + FUNIL ───────────────────────────────────────────────────────
     ca, cb = st.columns([3, 2])
     with ca:
         section("Distribuicao Horaria de Sessoes")
         st.plotly_chart(fig_hourly(dfs if is_consolidated else {list(dfs.keys())[0]: df}),
-                        use_container_width=True)
+                        width='stretch')
     with cb:
         section("Funil de Conversao")
-        st.plotly_chart(fig_funnel(kpis), use_container_width=True)
+        st.plotly_chart(fig_funnel(kpis), width='stretch')
 
     # ── MEIOS DE PAGAMENTO + CONECTORES ───────────────────────────────────────
     cc, cd = st.columns(2)
     with cc:
         section("Meios de Pagamento")
-        st.plotly_chart(fig_payment(df, color), use_container_width=True)
+        st.plotly_chart(fig_payment(df, color), width='stretch')
     with cd:
         section("Conectores (Sessoes e Receita)")
-        st.plotly_chart(fig_connectors(df), use_container_width=True)
+        st.plotly_chart(fig_connectors(df), width='stretch')
 
     # ── DURACAO + SEMANAL ─────────────────────────────────────────────────────
     ce, cf = st.columns(2)
     with ce:
         section("Duracao das Sessoes com Ticket Medio")
-        st.plotly_chart(fig_duration(df, color), use_container_width=True)
+        st.plotly_chart(fig_duration(df, color), width='stretch')
     with cf:
         section("Evolucao Semanal (Receita e Sessoes)")
-        st.plotly_chart(fig_weekly(df, color), use_container_width=True)
+        st.plotly_chart(fig_weekly(df, color), width='stretch')
 
     # ── TOP ESTACOES ──────────────────────────────────────────────────────────
     col_est = 'Estação' if 'Estação' in df.columns else 'Estacao'
@@ -1212,23 +1212,23 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         cg, ch = st.columns(2)
         with cg:
             section("Top 15 Estacoes por Receita")
-            st.plotly_chart(fig_top_stations(df, top_n=n_stations), use_container_width=True)
+            st.plotly_chart(fig_top_stations(df, top_n=n_stations), width='stretch')
         with ch:
             section("Top 15 Estacoes por Sessoes/Dia")
-            st.plotly_chart(fig_top_stations_by_sessions(df, top_n=n_stations), use_container_width=True)
+            st.plotly_chart(fig_top_stations_by_sessions(df, top_n=n_stations), width='stretch')
 
         section(f"Taxa de Ocupacao — Top 15 Carregadores ({horas_dia}h/dia uteis)")
         st.caption(f"Ocupacao = tempo total em uso / (dias x {horas_dia}h). Verde >80%, Azul 50-80%, Vermelho <50%.")
-        st.plotly_chart(fig_occupancy(df, top_n=n_stations, horas_dia=horas_dia), use_container_width=True)
+        st.plotly_chart(fig_occupancy(df, top_n=n_stations, horas_dia=horas_dia), width='stretch')
 
     # ── DIA DA SEMANA ─────────────────────────────────────────────────────────
     ci, cj = st.columns(2)
     with ci:
         section("Receita por Dia da Semana")
-        st.plotly_chart(fig_weekday_revenue(df, color), use_container_width=True)
+        st.plotly_chart(fig_weekday_revenue(df, color), width='stretch')
     with cj:
         section("Sessoes por Dia da Semana")
-        st.plotly_chart(fig_weekday_sessions(df, color), use_container_width=True)
+        st.plotly_chart(fig_weekday_sessions(df, color), width='stretch')
 
     # ── RECEITA VS CUSTO VS LUCRO ─────────────────────────────────────────────
     section("Receita vs Custo vs Lucro")
@@ -1244,7 +1244,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     with ck3: kpi_card("Lucro Total", f"R$ {total_l:,.0f}", f"Margem {margem:.1f}%", COLORS[1])
     with ck4: kpi_card("Lucro/Dia", f"R$ {total_l/max(kpis['days'],1):,.0f}", "media do periodo", COLORS[3])
     st.markdown("<br>", unsafe_allow_html=True)
-    st.plotly_chart(fig_cost, use_container_width=True)
+    st.plotly_chart(fig_cost, width='stretch')
 
     # ── RECEITA POR ORIGEM ────────────────────────────────────────────────────
     section("Receita por Origem")
@@ -1267,13 +1267,13 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 
     col_pie, col_bar = st.columns([1, 2])
     with col_pie:
-        st.plotly_chart(fig_revenue_sources(df, color), use_container_width=True)
+        st.plotly_chart(fig_revenue_sources(df, color), width='stretch')
     with col_bar:
-        st.plotly_chart(fig_revenue_sources_bar(df, color), use_container_width=True)
+        st.plotly_chart(fig_revenue_sources_bar(df, color), width='stretch')
 
     # ── SEGMENTACAO USUARIOS ──────────────────────────────────────────────────
     section("Segmentacao de Usuarios e Receita por Segmento")
-    st.plotly_chart(fig_users(df, color, kpis['tag_col']), use_container_width=True)
+    st.plotly_chart(fig_users(df, color, kpis['tag_col']), width='stretch')
 
     # ── INSIGHTS ──────────────────────────────────────────────────────────────
     section("Insights e Oportunidades")
@@ -1310,7 +1310,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
                 'kWh Total': f"{k['energy_kwh']:,.0f}",
                 'Proj. Anual': f"R$ {k['proj_annual']:,.0f}",
             })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), width='stretch', hide_index=True)
 
     # ── DRE SEMANAL (transposta: indicadores=linhas, semanas=colunas) ────────────
     section("DRE — Demonstrativo de Resultado por Semana")
@@ -1393,7 +1393,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     pdf_label = "Arquivo 01" if anon else list(dfs.keys())[0] if len(dfs)==1 else "Consolidado"
     btn_key = f"pdf_btn_{pdf_label.replace(' ','_').replace('/','_')}"
     dl_key  = f"pdf_dl_{pdf_label.replace(' ','_').replace('/','_')}"
-    if st.button("Gerar PDF do Dashboard", type="primary", use_container_width=True, key=btn_key):
+    if st.button("Gerar PDF do Dashboard", type="primary", width='stretch', key=btn_key):
         with st.spinner("Gerando PDF com graficos..."):
             pdf_bytes = generate_pdf(df, kpis, custo_kwh, custo_pct,
                                      dfs=dfs, color=color, title=pdf_label,
@@ -1404,7 +1404,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
                 data=pdf_bytes,
                 file_name=f"relatorio_eletropostos_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.pdf",
                 mime="application/pdf",
-                use_container_width=True,
+                width='stretch',
                 key=dl_key,
             )
         else:
