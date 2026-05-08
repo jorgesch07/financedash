@@ -877,7 +877,8 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
             ['Lucro total', f"R$ {total_l:,.2f}",
              'Margem líquida', f"{margem:.1f}%"],
         ]))
-        story.append(Spacer(1, 30))
+        story.append(Spacer(1, 10))
+        story.append(PageBreak())
 
         # ── DRE SEMANAL (logo após análise de custos) ─────────────────────────
         story += section_hdr('DRE — DEMONSTRATIVO DE RESULTADO POR SEMANA')
@@ -951,7 +952,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story.append(Spacer(1, 8))
 
         # ── GRAFICOS — cada um em linha própria ───────────────────────────────
-        story.append(PageBreak())
+        #story.append(PageBreak())
         story += section_hdr('RECEITA DIÁRIA')
         story.append(chart(fig_daily(dfs), h_cm=6))
         story.append(Spacer(1, 10))
@@ -961,7 +962,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story.append(chart(fig_rcl, h_cm=6))
         story.append(Spacer(1, 10))
 
-        story.append(PageBreak())
+        #story.append(PageBreak())
         story += section_hdr('DISTRIBUIÇÃO HORÁRIA DE SESSÕES')
         story.append(chart(fig_hourly(dfs), h_cm=6))
         story.append(Spacer(1, 10))
@@ -970,16 +971,17 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story.append(chart(fig_funnel(kpis), h_cm=5))
         story.append(Spacer(1, 10))
 
-        story.append(PageBreak())
+        #story.append(PageBreak())
         story += section_hdr('RECEITA POR DIA DA SEMANA')
         story.append(chart(fig_weekday_revenue(df, color), h_cm=5.5))
         story.append(Spacer(1, 10))
 
+        story.append(PageBreak())
         story += section_hdr('SESSÕES POR DIA DA SEMANA')
         story.append(chart(fig_weekday_sessions(df, color), h_cm=5.5))
         story.append(Spacer(1, 10))
 
-        story.append(PageBreak())
+        #story.append(PageBreak())
         story += section_hdr('MEIOS DE PAGAMENTO')
         story.append(chart(fig_payment(df, color), h_cm=5.5))
         story.append(Spacer(1, 10))
@@ -993,7 +995,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story.append(chart(fig_duration(df, color), h_cm=5.5))
         story.append(Spacer(1, 10))
 
-        story += section_hdr('EVOLUÇÃO SEMANAL (RECEITA E SESSÕES)')
+        #story += section_hdr('EVOLUÇÃO SEMANAL (RECEITA E SESSÕES)')
         story.append(chart(fig_weekly(df, color), h_cm=5.5))
         story.append(Spacer(1, 10))
 
@@ -1002,7 +1004,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         n_st = min(df[col_est].nunique(), 15) if col_est in df.columns else 0
         if n_st > 0:
             h_st = max(5.5, n_st * 0.48)
-            story.append(PageBreak())
+            #story.append(PageBreak())
             story += section_hdr('TOP 15 ESTAÇÕES POR RECEITA')
             story.append(chart(fig_top_stations(df, top_n=n_st), h_cm=h_st))
             story.append(Spacer(1, 10))
@@ -1024,12 +1026,13 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story.append(chart(fig_revenue_sources(df, color), h_cm=5.5))
         story.append(Spacer(1, 10))
 
+        story.append(PageBreak())
         story += section_hdr('RECEITA POR ORIGEM — EVOLUÇÃO SEMANAL')
         story.append(chart(fig_revenue_sources_bar(df, color), h_cm=5))
         story.append(Spacer(1, 10))
 
         # ── TABELAS ───────────────────────────────────────────────────────────
-        story.append(PageBreak())
+        #story.append(PageBreak())
 
         col_est = 'Estação' if 'Estação' in df.columns else 'Estacao'
         if col_est in df.columns:
@@ -1581,7 +1584,7 @@ with st.sidebar:
     st.markdown(
         '<div style="padding:1rem 0 1.5rem">'
         '<div style="font-size:1.3rem;font-weight:800;color:#00C9A7">Dashboard financeiro</div>'
-        '<div style="font-size:0.62rem;color:#6B7280;margin-top:2px">Análise financeira da operação da rede de recarga</div>'
+        '<div style="font-size:0.75rem;color:#6B7280;margin-top:2px">Análise financeira da operação da rede de recarga</div>'
         '</div>',
         unsafe_allow_html=True
     )
@@ -1594,12 +1597,12 @@ with st.sidebar:
     st.markdown("---")
 
     if uploaded_files:
-        st.markdown('<div style="font-size:0.65rem;color:#6B7280;margin-bottom:0.5rem">ARQUIVOS CARREGADOS</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">ARQUIVOS CARREGADOS</div>', unsafe_allow_html=True)
         for f in uploaded_files:
             st.markdown(f'<div style="font-size:0.68rem;color:#F0F2F8;padding:3px 0">&#128196; {f.name}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown('<div style="font-size:0.62rem;color:#6B7280">MODO DE ANÁLISE</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.75rem;color:#6B7280">MODO DE ANÁLISE</div>', unsafe_allow_html=True)
     mode = st.radio("", ["Por estação (individual)", "Consolidado (todos os arquivos)"],
                     label_visibility="collapsed")
 
@@ -1609,12 +1612,12 @@ with st.sidebar:
         anon = st.toggle("Anonimizar nomes (A, B, C...)", value=False)
 
     st.markdown("---")
-    st.markdown('<div style="font-size:0.62rem;color:#6B7280;margin-bottom:0.5rem">PARAMETROS DE CUSTO</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">PARÂMETROS DE CUSTO</div>', unsafe_allow_html=True)
     custo_kwh = st.number_input("Custo da energia (R$/kWh)", min_value=0.0, value=0.75, step=0.01, format="%.2f")
     custo_pct  = st.number_input("Custo operacional (% da receita)", min_value=0.0, max_value=100.0, value=15.0, step=0.5, format="%.1f")
 
     st.markdown("---")
-    st.markdown('<div style="font-size:0.62rem;color:#6B7280;margin-bottom:0.5rem">HORÁRIO DE FUNCIONAMENTO</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">HORÁRIO DE FUNCIONAMENTO</div>', unsafe_allow_html=True)
     st.markdown('<div style="font-size:0.70rem;color:#9CA3AF;margin-bottom:0.5rem">Usado para calcular a taxa de ocupação real dos carregadores</div>', unsafe_allow_html=True)
     col_h1, col_h2 = st.columns(2)
     with col_h1:
@@ -1699,7 +1702,7 @@ _selected_station   = ""
 with st.sidebar:
     if _connector_options or _station_options:
         st.markdown("---")
-        st.markdown('<div style="font-size:0.62rem;color:#6B7280;margin-bottom:0.5rem">FILTROS</div>',
+        st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">FILTROS</div>',
                     unsafe_allow_html=True)
         if _connector_options:
             _conn_choice = st.selectbox(
