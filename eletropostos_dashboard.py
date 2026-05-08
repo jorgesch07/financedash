@@ -174,6 +174,23 @@ components.html("""
         var pdoc = window.parent.document;
         if (pdoc.getElementById('ib-topbar')) return;
 
+        // Injeta ibApplyFilters no escopo do documento pai para evitar
+        // restrições de sandbox do iframe ao navegar com location.href
+        if (!pdoc.getElementById('ib-apply-filters-fn')) {
+            var scr = pdoc.createElement('script');
+            scr.id = 'ib-apply-filters-fn';
+            scr.textContent =
+                'function ibApplyFilters(){' +
+                '  var c=(document.getElementById("ib-connector-select")||{}).value||"";' +
+                '  var s=(document.getElementById("ib-station-select")||{}).value||"";' +
+                '  var u=new URL(location.href);' +
+                '  c?u.searchParams.set("connector",c):u.searchParams.delete("connector");' +
+                '  s?u.searchParams.set("station",s):u.searchParams.delete("station");' +
+                '  location.href=u.toString();' +
+                '}';
+            pdoc.head.appendChild(scr);
+        }
+
         var style = pdoc.createElement('style');
         style.id = 'ib-topbar-style';
         style.textContent = [
@@ -201,7 +218,7 @@ components.html("""
         var s1 = pdoc.createElement('select'); s1.id = 'ib-connector-select'; s1.className = 'ib-select';
         var o1 = pdoc.createElement('option'); o1.value=''; o1.textContent='Todos os conectores';
         s1.appendChild(o1);
-        s1.addEventListener('change', function() { applyFilters(); });
+        s1.setAttribute('onchange', 'ibApplyFilters()');
         g1.appendChild(l1); g1.appendChild(s1);
 
         // ── Separador ──
@@ -214,7 +231,7 @@ components.html("""
         var s2 = pdoc.createElement('select'); s2.id = 'ib-station-select'; s2.className = 'ib-select';
         var o2 = pdoc.createElement('option'); o2.value=''; o2.textContent='Todas as estações';
         s2.appendChild(o2);
-        s2.addEventListener('change', function() { applyFilters(); });
+        s2.setAttribute('onchange', 'ibApplyFilters()');
         g2.appendChild(l2); g2.appendChild(s2);
 
         // ── Logo ──
