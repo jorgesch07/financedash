@@ -631,27 +631,43 @@ def _fig_to_img(fig, w=1100, h=420):
 
 
 def _plotly_dl(fig, filename: str, key: str) -> None:
-    """Exibe gráfico + botão de download PNG 300 DPI.
-    Ao clicar, gera o PNG com tema escuro e inicia o download automaticamente."""
-    st.plotly_chart(fig, width='stretch')
-    if st.button("⬇", key=f"_btn_{key}", width='content', help="Baixar PNG (300 DPI)"):
+    """Exibe título + botão ⬇ na mesma linha, depois o gráfico sem título interno."""
+    import json as _j, base64 as _b64
+    import plotly.graph_objects as _go
+
+    _title = (fig.layout.title.text or "") if fig.layout.title else ""
+
+    _col_t, _col_b = st.columns([0.96, 0.04])
+    with _col_t:
+        if _title:
+            st.markdown(
+                f'<div style="font-size:0.85rem;font-weight:600;color:#F0F2F8;'
+                f'padding-top:6px">{_title}</div>',
+                unsafe_allow_html=True,
+            )
+    with _col_b:
+        _clicked = st.button("⬇", key=f"_btn_{key}", width='stretch',
+                             help="Baixar PNG (300 DPI)")
+
+    # Renderiza sem título interno (já exibido acima) e com margem superior reduzida
+    _fig_show = _go.Figure(_j.loads(fig.to_json()))
+    if _title:
+        _fig_show.update_layout(title=None, margin=dict(t=16))
+    st.plotly_chart(_fig_show, width='stretch')
+
+    if _clicked:
         with st.spinner("Gerando PNG…"):
             try:
-                import json as _j, base64 as _b64
-                import plotly.graph_objects as _go
                 fig2 = _go.Figure(_j.loads(fig.to_json()))
-                # Fundo transparente; automargin preserva labels longos
                 fig2.update_layout(
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                 )
                 fig2.update_xaxes(automargin=True)
                 fig2.update_yaxes(automargin=True)
-                # scale=3.125 → 300 DPI equivalente (96 DPI × 3.125)
                 png = fig2.to_image(format="png", width=1100, scale=3.125)
                 b64 = _b64.b64encode(png).decode()
                 fn = filename.replace("'", "").replace('"', "")
-                # Cria Blob no contexto do parent e dispara download automaticamente
                 components.html(f"""<script>
 (function(){{
     var bin=atob('{b64}'),bytes=new Uint8Array(bin.length);
