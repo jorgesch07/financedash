@@ -630,62 +630,14 @@ def _fig_to_img(fig, w=1100, h=420):
 
 
 
-def _plotly_dl(fig, filename: str, key: str) -> None:
-    """Exibe título + botão ⬇ na mesma linha, depois o gráfico sem título interno."""
-    import json as _j, base64 as _b64
-    import plotly.graph_objects as _go
-
-    _title = (fig.layout.title.text or "") if fig.layout.title else ""
-
-    _col_t, _col_b = st.columns([0.96, 0.04])
-    with _col_t:
-        if _title:
-            st.markdown(
-                f'<div style="font-size:0.85rem;font-weight:600;color:#F0F2F8;'
-                f'padding-top:6px">{_title}</div>',
-                unsafe_allow_html=True,
-            )
-    with _col_b:
-        _clicked = st.button("⬇", key=f"_btn_{key}", width='stretch',
-                             help="Baixar PNG (300 DPI)")
-
-    # Renderiza sem título interno (já exibido acima) e com margem superior reduzida
-    _fig_show = _go.Figure(_j.loads(fig.to_json()))
-    if _title:
-        _fig_show.update_layout(title=None, margin=dict(t=16))
-    st.plotly_chart(_fig_show, width='stretch')
-
-    if _clicked:
-        with st.spinner("Gerando PNG…"):
-            try:
-                fig2 = _go.Figure(_j.loads(fig.to_json()))
-                fig2.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                )
-                fig2.update_xaxes(automargin=True)
-                fig2.update_yaxes(automargin=True)
-                png = fig2.to_image(format="png", width=1100, scale=3.125)
-                b64 = _b64.b64encode(png).decode()
-                fn = filename.replace("'", "").replace('"', "")
-                components.html(f"""<script>
-(function(){{
-    var bin=atob('{b64}'),bytes=new Uint8Array(bin.length);
-    for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
-    var blob=new Blob([bytes],{{type:'image/png'}});
-    var url=window.parent.URL.createObjectURL(blob);
-    var a=window.parent.document.createElement('a');
-    a.href=url; a.download='{fn}.png';
-    window.parent.document.body.appendChild(a);
-    a.click();
-    setTimeout(function(){{
-        window.parent.document.body.removeChild(a);
-        window.parent.URL.revokeObjectURL(url);
-    }},200);
-}})();
-</script>""", height=0)
-            except Exception as _ex:
-                st.caption(f"Exportação indisponível: {_ex}")
+def _plotly_dl(fig, filename: str) -> None:
+    """Exibe o gráfico com o botão de câmera nativo do Plotly configurado para PNG 300 DPI.
+    O botão aparece ao passar o mouse sobre o gráfico — sem UI extra."""
+    fn = filename.replace("'", "").replace('"', "")
+    st.plotly_chart(fig, width='stretch', config={
+        'toImageButtonOptions': {'format': 'png', 'filename': fn, 'scale': 3.125},
+        'displaylogo': False,
+    })
 
 
 def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", horas_dia=24):
@@ -1291,7 +1243,7 @@ def build_dre_table(df, custo_kwh, custo_pct):
     return weekly
 
 
-def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct, anon, horas_dia=24, uid=""):
+def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct, anon, horas_dia=24):
     """Renderiza todos os KPIs e graficos — identico para modo individual e consolidado."""
 
     # ── ROW 1: 4 cards principais ─────────────────────────────────────────────
@@ -1356,35 +1308,35 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 
     # ── RECEITA DIARIA ────────────────────────────────────────────────────────
     section("Receita Diária")
-    _plotly_dl(fig_daily(dfs), "receita_diaria", f"daily_{uid}")
+    _plotly_dl(fig_daily(dfs), "receita_diaria")
 
     # ── HORARIO + FUNIL ───────────────────────────────────────────────────────
     ca, cb = st.columns([3, 2])
     with ca:
         section("Distribuição Horária de Sessões")
         _plotly_dl(fig_hourly(dfs if is_consolidated else {list(dfs.keys())[0]: df}),
-                   "distribuicao_horaria", f"hourly_{uid}")
+                   "distribuicao_horaria")
     with cb:
         section("Funil de Conversão")
-        _plotly_dl(fig_funnel(kpis), "funil_conversao", f"funnel_{uid}")
+        _plotly_dl(fig_funnel(kpis), "funil_conversao")
 
     # ── MEIOS DE PAGAMENTO + CONECTORES ───────────────────────────────────────
     cc, cd = st.columns(2)
     with cc:
         section("Meios de Pagamento")
-        _plotly_dl(fig_payment(df, color), "meios_pagamento", f"payment_{uid}")
+        _plotly_dl(fig_payment(df, color), "meios_pagamento")
     with cd:
         section("Conectores (Sessões e Receita)")
-        _plotly_dl(fig_connectors(df), "conectores", f"conn_{uid}")
+        _plotly_dl(fig_connectors(df), "conectores")
 
     # ── DURACAO + SEMANAL ─────────────────────────────────────────────────────
     ce, cf = st.columns(2)
     with ce:
         section("Duração das Sessões com Ticket Médio")
-        _plotly_dl(fig_duration(df, color), "duracao_sessoes", f"duration_{uid}")
+        _plotly_dl(fig_duration(df, color), "duracao_sessoes")
     with cf:
         section("Evolução Semanal (Receita e Sessões)")
-        _plotly_dl(fig_weekly(df, color), "evolucao_semanal", f"weekly_{uid}")
+        _plotly_dl(fig_weekly(df, color), "evolucao_semanal")
 
     # ── TOP ESTACOES ──────────────────────────────────────────────────────────
     col_est = 'Estação' if 'Estação' in df.columns else 'Estacao'
@@ -1393,25 +1345,22 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         cg, ch = st.columns(2)
         with cg:
             section("Top 15 Estações por Receita")
-            _plotly_dl(fig_top_stations(df, top_n=n_stations),
-                       "top_estacoes_receita", f"topst_{uid}")
+            _plotly_dl(fig_top_stations(df, top_n=n_stations), "top_estacoes_receita")
         with ch:
             section("Top 15 Estações por Sessões/Dia")
-            _plotly_dl(fig_top_stations_by_sessions(df, top_n=n_stations),
-                       "top_estacoes_sessoes", f"topss_{uid}")
+            _plotly_dl(fig_top_stations_by_sessions(df, top_n=n_stations), "top_estacoes_sessoes")
 
         section(f"Taxa de Ocupação — Top 15 Carregadores ({horas_dia}h/dia uteis)")
-        _plotly_dl(fig_occupancy(df, top_n=n_stations, horas_dia=horas_dia),
-                   "ocupacao", f"occ_{uid}")
+        _plotly_dl(fig_occupancy(df, top_n=n_stations, horas_dia=horas_dia), "ocupacao")
 
     # ── DIA DA SEMANA ─────────────────────────────────────────────────────────
     ci, cj = st.columns(2)
     with ci:
         section("Receita por Dia da Semana")
-        _plotly_dl(fig_weekday_revenue(df, color), "receita_dia_semana", f"wdr_{uid}")
+        _plotly_dl(fig_weekday_revenue(df, color), "receita_dia_semana")
     with cj:
         section("Sessões por Dia da Semana")
-        _plotly_dl(fig_weekday_sessions(df, color), "sessoes_dia_semana", f"wds_{uid}")
+        _plotly_dl(fig_weekday_sessions(df, color), "sessoes_dia_semana")
 
     # ── RECEITA VS CUSTO VS LUCRO ─────────────────────────────────────────────
     section("Receita vs Custo vs Lucro")
@@ -1426,7 +1375,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     with ck3: kpi_card("Lucro Total", f"R$ {total_l:,.0f}", f"Margem {margem:.1f}%", COLORS[1])
     with ck4: kpi_card("Lucro/Dia", f"R$ {total_l/max(kpis['days'],1):,.0f}", "média do período", COLORS[3])
     st.markdown("<br>", unsafe_allow_html=True)
-    _plotly_dl(fig_cost, "receita_custo_lucro", f"cost_{uid}")
+    _plotly_dl(fig_cost, "receita_custo_lucro")
 
     # ── RECEITA POR ORIGEM ────────────────────────────────────────────────────
     section("Receita por Origem")
@@ -1449,13 +1398,13 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 
     col_pie, col_bar = st.columns([1, 2])
     with col_pie:
-        _plotly_dl(fig_revenue_sources(df, color), "receita_por_origem", f"rs_{uid}")
+        _plotly_dl(fig_revenue_sources(df, color), "receita_por_origem")
     with col_bar:
-        _plotly_dl(fig_revenue_sources_bar(df, color), "receita_origem_semanal", f"rsb_{uid}")
+        _plotly_dl(fig_revenue_sources_bar(df, color), "receita_origem_semanal")
 
     # ── SEGMENTACAO USUARIOS ──────────────────────────────────────────────────
     section("Segmentação de Usuarios e Receita por Segmento")
-    _plotly_dl(fig_users(df, color, kpis['tag_col']), "segmentacao_usuarios", f"users_{uid}")
+    _plotly_dl(fig_users(df, color, kpis['tag_col']), "segmentacao_usuarios")
 
     # ── INSIGHTS ──────────────────────────────────────────────────────────────
     section("Insights e Oportunidades")
@@ -1764,7 +1713,7 @@ if mode == "Consolidado (todos os arquivos)" or len(dfs) == 1:
     kpis = compute_kpis(df_all)
     render_dashboard(df_all, dfs, kpis, ACCENT, is_consolidated=True,
                      custo_kwh=custo_kwh, custo_pct=custo_pct, anon=anon, horas_dia=horas_dia,
-                     uid="all")
+)
 
 # ─── INDIVIDUAL VIEW ──────────────────────────────────────────────────────────
 else:
@@ -1783,7 +1732,7 @@ else:
             )
             render_dashboard(df, {name: df}, kpis, color, is_consolidated=False,
                              custo_kwh=custo_kwh, custo_pct=custo_pct, anon=anon, horas_dia=horas_dia,
-                             uid=name[:20].replace(" ", "_").replace("/", "_"))
+)
 
 # ─── FOOTER ───────────────────────────────────────────────────────────────────
 st.markdown(
