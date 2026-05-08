@@ -179,14 +179,7 @@ components.html("""
         style.textContent = [
             '#ib-topbar{position:fixed;top:0;left:0;right:0;z-index:99998;height:54px;',
             'background:#0A0C10;border-bottom:1px solid #1E2330;',
-            'display:flex;align-items:center;padding:0 24px;gap:12px;font-family:monospace;}',
-            '.ib-filter-group{display:flex;align-items:center;gap:7px;}',
-            '.ib-filter-label{font-size:9px;color:#6B7280;letter-spacing:.08em;',
-            'white-space:nowrap;text-transform:uppercase;}',
-            '.ib-select{background:#13161D;border:1px solid #2D3340;border-radius:6px;',
-            'color:#F0F2F8;font-size:11px;font-family:monospace;padding:5px 10px;',
-            'cursor:default;min-width:170px;max-width:220px;pointer-events:none;}',
-            '.ib-select:disabled{opacity:1;}',
+            'display:flex;align-items:center;padding:0 24px;font-family:monospace;}',
             '#ib-topbar-logo{height:39px;width:auto;object-fit:contain;margin-left:auto;}',
             '.block-container{padding-top:4.8rem !important;}'
         ].join('');
@@ -195,33 +188,11 @@ components.html("""
         var bar = pdoc.createElement('div');
         bar.id = 'ib-topbar';
 
-        // ── Conector ──
-        var g1 = pdoc.createElement('div'); g1.className = 'ib-filter-group';
-        var l1 = pdoc.createElement('span'); l1.className = 'ib-filter-label'; l1.textContent = 'Conector';
-        var s1 = pdoc.createElement('select'); s1.id = 'ib-connector-select'; s1.className = 'ib-select';
-        var o1 = pdoc.createElement('option'); o1.value=''; o1.textContent='Todos os conectores';
-        s1.appendChild(o1);
-        s1.disabled = true;
-        g1.appendChild(l1); g1.appendChild(s1);
-
-        // ── Separador ──
-        var sep = pdoc.createElement('div');
-        sep.style.cssText = 'width:1px;height:24px;background:#1E2330;flex-shrink:0;';
-
-        // ── Estação ──
-        var g2 = pdoc.createElement('div'); g2.className = 'ib-filter-group';
-        var l2 = pdoc.createElement('span'); l2.className = 'ib-filter-label'; l2.textContent = 'Estação';
-        var s2 = pdoc.createElement('select'); s2.id = 'ib-station-select'; s2.className = 'ib-select';
-        var o2 = pdoc.createElement('option'); o2.value=''; o2.textContent='Todas as estações';
-        s2.appendChild(o2);
-        s2.disabled = true;
-        g2.appendChild(l2); g2.appendChild(s2);
-
         // ── Logo ──
         var logo = pdoc.createElement('img');
         logo.id = 'ib-topbar-logo'; logo.src = LOGO_URL; logo.alt = 'Intelbras';
 
-        bar.appendChild(g1); bar.appendChild(sep); bar.appendChild(g2); bar.appendChild(logo);
+        bar.appendChild(logo);
         pdoc.body.prepend(bar);
 
         adjustPadding();
@@ -1551,28 +1522,6 @@ with st.sidebar:
                 index=0, key="filter_station"
             )
             _selected_station = "" if _stat_choice == "Todas as estações" else _stat_choice
-
-# Sincroniza os selects da topbar com o filtro atual selecionado na sidebar
-import json as _json
-components.html(f"""
-<script>
-(function() {{
-    var pdoc = window.parent.document;
-    function sync(selId, opts, cur) {{
-        var sel = pdoc.getElementById(selId);
-        if (!sel) return;
-        while (sel.options.length > 1) sel.remove(1);
-        opts.forEach(function(v) {{
-            var o = pdoc.createElement('option');
-            o.value = v; o.textContent = v; sel.appendChild(o);
-        }});
-        sel.value = cur || '';
-    }}
-    sync('ib-connector-select', {_json.dumps(_connector_options)}, {_json.dumps(_selected_connector)});
-    sync('ib-station-select',   {_json.dumps(_station_options)},   {_json.dumps(_selected_station)});
-}})();
-</script>
-""", height=0)
 
 # Aplica filtros em df_all e em cada dfs
 if _selected_connector and _col_conn:
