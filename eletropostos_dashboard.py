@@ -786,7 +786,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story += section_hdr('INDICADORES PRINCIPAIS')
         story.append(kv_table([
             ['Receita Confirmada', f"R$ {kpis['revenue']:,.2f}",
-             'Sessoes Pagas', f"{kpis['paid_sessions']:,}"],
+             'Sessões Pagas', f"{kpis['paid_sessions']:,}"],
             ['Energia Consumida', f"{kpis['energy_kwh']:,.1f} kWh",
              'R$/kWh Médio', f"R$ {kpis['rev_per_kwh']:.2f}"],
             ['Ticket Médio', f"R$ {kpis['avg_ticket']:.2f}",
@@ -948,7 +948,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         wd_rev  = df2[df2['paid']].groupby('dow')['Receita(R$)'].sum().reindex(range(7), fill_value=0)
         wd_sess = df2.groupby('dow').size().reindex(range(7), fill_value=0)
         wd_hdr  = [Paragraph(h, S(7, bold=True, color=C_GREY))
-                   for h in ['Dia','Sessoes','Receita (R$)','Ticket Medio']]
+                   for h in ['Dia','Sessoes','Receita (R$)','Ticket Médio']]
         wd_rows = [wd_hdr]
         for i, dia in enumerate(DIAS_SEMANA):
             s = int(wd_sess.iloc[i]); r = float(wd_rev.iloc[i])
@@ -1036,8 +1036,8 @@ def generate_insights(kpis, df):
             elif growth < -10:
                 insights.append(('Queda na ultima semana',
                     f"Receita caiu {abs(growth):.0f}% vs primeira semana. "
-                    f"Investigar causa: manutencao, sazonalidade ou falha tecnica."))
-    insights.append(('Projecao anual',
+                    f"Investigar causa: manutenção, sazonalidade ou falha técnica."))
+    insights.append(('Projeção anual',
         f"R$ {kpis['proj_annual']:,.0f}/ano baseado em {kpis['days']} dias de dados "
         f"(R$ {kpis['rev_per_day']:,.0f}/dia de média)."))
     return insights
@@ -1260,9 +1260,10 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
             section(f"Taxa de Ocupacao — Top 15 Carregadores ({horas_dia}h/dia uteis)")
         with col_occ_help:
             st.markdown(
-                f'<span title="Como calcular: tempo total em uso ÷ (dias × {horas_dia}h disponíveis) × 100 | Verde ≥ 80% | Azul 50-80% | Vermelho < 50%" style="cursor:help;font-size:1.1rem;color:#6B7280;display:inline-block;margin-top:0.9rem">&#9432;</span>',
+                help='<span title="Como calcular: tempo total em uso ÷ (dias × {horas_dia}h disponíveis) x 100 | Verde ≥ 80% | Azul 50-80% | Vermelho < 50%" style="cursor:help;font-size:1.1rem;color:#6B7280;display:inline-block;margin-top:0.9rem">&#63;</span>',
                 unsafe_allow_html=True
             )
+            
         st.plotly_chart(fig_occupancy(df, top_n=n_stations, horas_dia=horas_dia), width='stretch')
 
     # ── DIA DA SEMANA ─────────────────────────────────────────────────────────
@@ -1511,7 +1512,7 @@ with st.sidebar:
 st.markdown(
     '<div style="margin-bottom:1.5rem">'
     '<div class="page-title">Dashboard <span style="color:#00C9A7">Financeiro</span></div>'
-    '<div class="page-subtitle">Rede de Eletropostos &middot; Analise de transacoes</div>'
+    '<div class="page-subtitle">Software em testes, configura os dados antes de transmiti-los</div>'
     '</div>',
     unsafe_allow_html=True
 )
