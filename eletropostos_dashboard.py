@@ -877,7 +877,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
             ['Lucro total', f"R$ {total_l:,.2f}",
              'Margem líquida', f"{margem:.1f}%"],
         ]))
-        story.append(Spacer(1, 8))
+        story.append(Spacer(1, 16))
 
         # ── DRE SEMANAL (logo após análise de custos) ─────────────────────────
         story += section_hdr('DRE — DEMONSTRATIVO DE RESULTADO POR SEMANA')
