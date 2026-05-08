@@ -1602,7 +1602,7 @@ with st.sidebar:
             st.markdown(f'<div style="font-size:0.68rem;color:#F0F2F8;padding:3px 0">&#128196; {f.name}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown('<div style="font-size:0.75rem;color:#6B7280">MODO DE ANÁLISE</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.62rem;color:#6B7280">MODO DE ANÁLISE</div>', unsafe_allow_html=True)
     mode = st.radio("", ["Por estação (individual)", "Consolidado (todos os arquivos)"],
                     label_visibility="collapsed")
 
@@ -1627,7 +1627,7 @@ with st.sidebar:
         hora_fim = st.number_input("Fechamento", min_value=1, max_value=24, value=24, step=1,
                                     help="Horário de fechamento (24 = meia-noite)")
     horas_dia = max(1, hora_fim - hora_inicio)
-    st.markdown(f'<div style="font-size:0.68rem;color:#00C9A7;margin-top:2px">&#9201; {horas_dia}h disponiveis/dia</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="font-size:0.75rem;color:#00C9A7;margin-top:2px">&#9201; {horas_dia}h disponíveis/dia</div>', unsafe_allow_html=True)
 
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 st.markdown(
