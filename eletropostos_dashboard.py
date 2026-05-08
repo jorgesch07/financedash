@@ -412,7 +412,7 @@ def fig_hourly(dfs):
 
 def fig_funnel(kpis):
     vals = [kpis['total_sessions'], kpis['paid_sessions']+kpis['not_paid'], kpis['paid_sessions']]
-    labels = ['Total de sessoes', 'Tentativa de pagamento', 'Pagas (aprovadas)']
+    labels = ['Total de sessões', 'Tentativa de pagamento', 'Pagas (aprovadas)']
     fig = go.Figure(go.Funnel(y=labels, x=vals, textinfo='value+percent previous',
         marker_color=[ACCENT, COLORS[1], COLORS[2]],
         connector=dict(line=dict(color=CARD_BORDER, width=1))))
@@ -440,7 +440,7 @@ def fig_payment(df, color):
 def fig_connectors(df):
     if 'Conector(Tipo)' not in df.columns: return go.Figure()
     conn = df.groupby('Conector(Tipo)').agg(sessions=('Receita(R$)','count'), revenue=('Receita(R$)','sum')).reset_index()
-    fig = make_subplots(rows=1, cols=2, subplot_titles=['Sessoes','Receita (R$)'], horizontal_spacing=0.12)
+    fig = make_subplots(rows=1, cols=2, subplot_titles=['Sessões','Receita (R$)'], horizontal_spacing=0.12)
     fig.add_trace(go.Bar(y=conn['Conector(Tipo)'], x=conn['sessions'], orientation='h',
                          marker_color=ACCENT, showlegend=False), row=1, col=1)
     fig.add_trace(go.Bar(y=conn['Conector(Tipo)'], x=conn['revenue'], orientation='h',
@@ -455,7 +455,7 @@ def fig_duration(df, color):
     dur = df.groupby('dur_seg', observed=True).agg(
         count=('Receita(R$)','count'), avg_kwh=('Energia(kWh)','mean'), avg_rev=('Receita(R$)','mean')).reset_index()
     fig = make_subplots(specs=[[{'secondary_y': True}]])
-    fig.add_trace(go.Bar(x=dur['dur_seg'], y=dur['count'], name='Sessoes',
+    fig.add_trace(go.Bar(x=dur['dur_seg'], y=dur['count'], name='Sessões',
                          marker_color=color, opacity=0.8), secondary_y=False)
     fig.add_trace(go.Scatter(x=dur['dur_seg'], y=dur['avg_rev'], name='Ticket Medio (R$)',
                              mode='lines+markers', line=dict(color=COLORS[2], width=2),
@@ -472,7 +472,7 @@ def fig_weekly(df, color):
     fig.add_trace(go.Bar(x=weekly['semana'].astype(str), y=weekly['revenue'],
                          name='Receita', marker_color=color, opacity=0.85), secondary_y=False)
     fig.add_trace(go.Scatter(x=weekly['semana'].astype(str), y=weekly['sessions'],
-                             name='Sessoes', mode='lines+markers',
+                             name='Sessões', mode='lines+markers',
                              line=dict(color=COLORS[2], width=2), marker=dict(size=6)), secondary_y=True)
     fig.update_layout(**PLOTLY_LAYOUT, height=260)
     fig.update_layout(showlegend=True)
@@ -776,7 +776,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story.append(Paragraph(
             f'Gerado em {datetime.date.today().strftime("%d/%m/%Y")}  |  '
             f'{kpis["days"]} dias de dados  |  '
-            f'{kpis["total_sessions"]:,} sessoes totais',
+            f'{kpis["total_sessions"]:,} sessões totais',
             S(8, color=C_GREY)))
         story.append(Spacer(1, 8))
         story.append(HRFlowable(width=W, thickness=2, color=C_GREEN))
@@ -918,7 +918,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
                    .assign(r_dia=lambda x: x['receita']/days_n)
                    .sort_values('receita', ascending=False).head(15).reset_index())
             hdr = [Paragraph(h, S(7, bold=True, color=C_GREY))
-                   for h in ['Estacao','Sessoes','Receita (R$)','R$/Dia','kWh']]
+                   for h in ['Estação','Sessões','Receita (R$)','R$/Dia','kWh']]
             trows = [hdr]
             for _, row in top.iterrows():
                 trows.append([
@@ -948,7 +948,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         wd_rev  = df2[df2['paid']].groupby('dow')['Receita(R$)'].sum().reindex(range(7), fill_value=0)
         wd_sess = df2.groupby('dow').size().reindex(range(7), fill_value=0)
         wd_hdr  = [Paragraph(h, S(7, bold=True, color=C_GREY))
-                   for h in ['Dia','Sessoes','Receita (R$)','Ticket Médio']]
+                   for h in ['Dia','Sessões','Receita (R$)','Ticket Médio']]
         wd_rows = [wd_hdr]
         for i, dia in enumerate(DIAS_SEMANA):
             s = int(wd_sess.iloc[i]); r = float(wd_rev.iloc[i])
@@ -1018,7 +1018,7 @@ def generate_insights(kpis, df):
             f"Estratégia de ativação após a primeira-sessão pode aumentar retenção."))
     if kpis['idle_fee'] > 0:
         insights.append(('Idle Fee ativo',
-            f"R$ {kpis['idle_fee']:,.2f} coletados em {kpis['idle_sessions']} sessoes por ociosidade."))
+            f"R$ {kpis['idle_fee']:,.2f} coletados em {kpis['idle_sessions']} sessões por ociosidade."))
     if kpis['rejection_rate'] > 5:
         insights.append(('Taxa de reprovação elevada',
             f"{kpis['rejection_rate']:.1f}% dos pagamentos foram reprovados ({kpis['not_paid']} sessões). "
@@ -1158,10 +1158,10 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
                       f"{kpis['paid_sessions']:,} sessões pagas", color)
     with c2: kpi_card("Energia Entregue",
                       f"{kpis['energy_kwh']:,.0f} kWh",
-                      f"R$ {kpis['rev_per_kwh']:.2f}/kWh medio", COLORS[1])
+                      f"R$ {kpis['rev_per_kwh']:.2f}/kWh médio", COLORS[1])
     with c3: kpi_card("Ticket Médio",
                       f"R$ {kpis['avg_ticket']:.2f}",
-                      f"{kpis['sessions_per_day']:.1f} sessoes/dia", COLORS[2])
+                      f"{kpis['sessions_per_day']:.1f} sessões/dia", COLORS[2])
     with c4: kpi_card("Projeção Anual",
                       f"R$ {kpis['proj_annual']:,.0f}",
                       f"baseado em {kpis['days']} dias de dados", COLORS[3])
@@ -1172,11 +1172,11 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     c5,c6,c7,c8 = st.columns(4)
     with c5: kpi_card("Conversao",
                       f"{kpis['conversion']:.1f}%",
-                      f"{kpis['approval']:.1f}% do total de sessoes monetizado", COLORS[4])
+                      f"{kpis['approval']:.1f}% do total de sessões monetizado", COLORS[4])
     with c6: kpi_card("Usuarios Unicos",
                       f"{kpis['unique_users']:,}",
                       f"{kpis['one_time']} one-time  |  {kpis['power_users']} power users", COLORS[5])
-    with c7: kpi_card("Power Users (5+ sessoes)",
+    with c7: kpi_card("Power Users (5+ sessões)",
                       str(kpis['power_users']),
                       f"{kpis['power_rev_pct']:.1f}% da receita total", COLORS[6])
     with c8: kpi_card("Receita Pendente",
@@ -1231,13 +1231,13 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         section("Meios de Pagamento")
         st.plotly_chart(fig_payment(df, color), width='stretch')
     with cd:
-        section("Conectores (Sessoes e Receita)")
+        section("Conectores (Sessões e Receita)")
         st.plotly_chart(fig_connectors(df), width='stretch')
 
     # ── DURACAO + SEMANAL ─────────────────────────────────────────────────────
     ce, cf = st.columns(2)
     with ce:
-        section("Duração das Sessoes com Ticket Médio")
+        section("Duração das Sessões com Ticket Médio")
         st.plotly_chart(fig_duration(df, color), width='stretch')
     with cf:
         section("Evolução Semanal (Receita e Sessões)")
@@ -1341,12 +1341,12 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
             k = compute_kpis(sdf)
             rows.append({
                 'Arquivo / Estacao': name,
-                'Sessoes': f"{k['total_sessions']:,}",
+                'Sessões': f"{k['total_sessions']:,}",
                 'Receita (R$)': f"{k['revenue']:,.2f}",
                 'R$/dia': f"{k['rev_per_day']:,.0f}",
                 'Ticket Medio': f"R$ {k['avg_ticket']:.2f}",
                 'R$/kWh': f"{k['rev_per_kwh']:.2f}",
-                'Conversao': f"{k['conversion']:.1f}%",
+                'Conversão': f"{k['conversion']:.1f}%",
                 'kWh Total': f"{k['energy_kwh']:,.0f}",
                 'Proj. Anual': f"R$ {k['proj_annual']:,.0f}",
             })
@@ -1375,7 +1375,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         }
 
         indicadores = [
-            ('Sessões Pagas',     [f"{int(r['sessoes']):,}"           for _,r in dre.iterrows()], ''),
+            ('Sessões Pagas',     [f"{int(r['sessões']):,}"           for _,r in dre.iterrows()], ''),
             ('kWh Entregues',     [f"{r['kwh']:,.1f}"                  for _,r in dre.iterrows()], ''),
             ('R$ Início Recarga', [f"R$ {r['r_inicio']:,.2f}"          for _,r in dre.iterrows()], ''),
             ('R$ Energia (kWh)',  [f"R$ {r['r_kwh_rec']:,.2f}"         for _,r in dre.iterrows()], ''),
@@ -1631,7 +1631,7 @@ else:
                 f'<div style="margin-bottom:1rem">'
                 f'<span style="font-size:1.1rem;font-weight:700;color:{color}">{name}</span>'
                 f'<span style="font-size:0.65rem;color:#6B7280;margin-left:0.75rem">'
-                f'{kpis["days"]} dias &middot; {kpis["total_sessions"]:,} sessoes</span>'
+                f'{kpis["days"]} dias &middot; {kpis["total_sessions"]:,} sessões</span>'
                 f'</div>',
                 unsafe_allow_html=True
             )
@@ -1642,7 +1642,7 @@ else:
 st.markdown(
     f'<div style="text-align:center;padding:2rem 0 1rem;font-size:0.62rem;color:#3D4560;'
     f'border-top:1px solid #1E2330;margin-top:2rem">'
-    f'&#9889; eletropostos dashboard &middot; {pd.Timestamp.now().strftime("%d/%m/%Y %H:%M")}'
+    f'&#9889; MVP do dashboard financeiro v0.1 &middot; {pd.Timestamp.now().strftime("%d/%m/%Y %H:%M")}'
     f'</div>',
     unsafe_allow_html=True
 )
