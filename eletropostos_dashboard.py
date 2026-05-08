@@ -668,8 +668,8 @@ def _plotly_dl(fig, filename: str, key: str) -> None:
     }},200);
 }})();
 </script>""", height=0)
-            except Exception:
-                st.caption("Exportação indisponível — verifique kaleido.")
+            except Exception as _ex:
+                st.caption(f"Exportação indisponível: {_ex}")
 
 
 def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", horas_dia=24):
@@ -750,14 +750,20 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         total_l = daily_c['lucro'].sum()
         margem  = total_l/total_r*100 if total_r else 0
 
-        # ── Tenta baixar o logo ──────────────────────────────────────────────
+        # ── Tenta carregar o logo ────────────────────────────────────────────
         _logo_img = None
         try:
-            import urllib.request as _ur
-            _logo_data = _ur.urlopen(
-                'https://upload.wikimedia.org/wikipedia/commons/2/2b/Logomarca_Intelbras_verde.png',
-                timeout=5).read()
-            _logo_img = RLImage(io.BytesIO(_logo_data), width=3.6*cm, height=1.4*cm)
+            import os as _os
+            _logo_local = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                                        'Logomarca_Intelbras_verde (1).png')
+            if _os.path.exists(_logo_local):
+                _logo_img = RLImage(_logo_local, width=3.6*cm, height=1.4*cm)
+            else:
+                import urllib.request as _ur
+                _logo_data = _ur.urlopen(
+                    'https://upload.wikimedia.org/wikipedia/commons/2/2b/Logomarca_Intelbras_verde.png',
+                    timeout=5).read()
+                _logo_img = RLImage(io.BytesIO(_logo_data), width=3.6*cm, height=1.4*cm)
         except Exception:
             pass
 
