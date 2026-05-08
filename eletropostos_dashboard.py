@@ -1258,59 +1258,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         col_occ_title, col_occ_help = st.columns([10, 1])
         with col_occ_title:
             section(f"Taxa de Ocupacao — Top 15 Carregadores ({horas_dia}h/dia uteis)")
-        with col_occ_help:
-            #st.markdown(
-             #   f'<span title="Como calcular: tempo total em uso ÷ (dias × {horas_dia}h disponíveis) x 100 | Verde ≥ 80% | Azul 50-80% | Vermelho < 50%" style="cursor:help;font-size:1.1rem;color:#6B7280;display:inline-block;margin-top:0.9rem">&#63;</span>',
-              #  unsafe_allow_html=True
-            #)
-            st.markdown(
-                f"""
-                <style>
-                .tooltip {{
-                    position: relative;
-                    display: inline-block;
-                    cursor: help;
-                    color: #6B7280;
-                    font-size: 1.1rem;
-                }}
-
-                .tooltip .tooltiptext {{
-                    visibility: hidden;
-                    width: 320px;
-                    background-color: #111827;
-                    color: #fff;
-                    text-align: left;
-                    border-radius: 6px;
-                    padding: 8px;
-                    position: absolute;
-                    z-index: 1;
-                    bottom: 125%;
-                    left: 50%;
-                    margin-left: -160px;
-                    opacity: 0;
-                    transition: opacity 0.3s;
-                    font-size: 0.8rem;
-                }}
-
-                .tooltip:hover .tooltiptext {{
-                    visibility: visible;
-                    opacity: 1;
-                }}
-                </style>
-
-                <div class="tooltip">
-                    &#63;
-                    <span class="tooltiptext">
-                        Como calcular:<br>
-                        tempo total em uso ÷ (dias × {horas_dia}h disponíveis) × 100<br><br>
-                        Verde ≥ 80%<br>
-                        Azul 50-80%<br>
-                        Vermelho &lt; 50%
-                    </span>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )            
+    
         st.plotly_chart(fig_occupancy(df, top_n=n_stations, horas_dia=horas_dia), width='stretch')
 
     # ── DIA DA SEMANA ─────────────────────────────────────────────────────────
