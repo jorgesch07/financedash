@@ -11,7 +11,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 st.set_page_config(
-    page_title="Eletropostos Dashboard",
+    page_title="Dashboard Financeiro",
     page_icon="E",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -366,7 +366,7 @@ def fig_payment(df, color):
         textinfo='percent', textfont_size=9))
     fig.update_layout(**PLOTLY_LAYOUT, height=240)
     fig.update_layout(showlegend=True,
-        legend=dict(font=dict(size=9), orientation='v', yanchor='middle', y=0.5, xanchor='left', x=1.05))
+        legend=dict(font=dict(size=9), orientation='v', yanchor='middle', y=0.5, xanchor='left', x=0.7))
     return fig
 
 def fig_connectors(df):
@@ -464,7 +464,7 @@ def fig_top_stations_by_sessions(df, top_n=15):
 
 
 
-DIAS_SEMANA = ['Segunda','Terca','Quarta','Quinta','Sexta','Sabado','Domingo']
+DIAS_SEMANA = ['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo']
 
 def fig_weekday_revenue(df, color):
     df2 = df[df['paid']].copy()
@@ -621,12 +621,55 @@ def _fig_to_img(fig, w=1100, h=420):
     fig2.update_layout(
         paper_bgcolor='white', plot_bgcolor='#F8F9FA',
         font=dict(color='#1A1A18', size=12, family='Arial'),
-        margin=dict(l=80, r=40, t=50, b=70),
     )
-    fig2.update_xaxes(gridcolor='#E5E5E5', linecolor='#CCC', tickfont=dict(color='#333', size=11))
-    fig2.update_yaxes(gridcolor='#E5E5E5', linecolor='#CCC', tickfont=dict(color='#333', size=11))
+    fig2.update_xaxes(gridcolor='#E5E5E5', linecolor='#CCC', tickfont=dict(color='#333', size=11),
+                      automargin=True)
+    fig2.update_yaxes(gridcolor='#E5E5E5', linecolor='#CCC', tickfont=dict(color='#333', size=11),
+                      automargin=True)
     return fig2.to_image(format='png', width=w, height=h, scale=4)
 
+
+
+def _plotly_dl(fig, filename: str, key: str) -> None:
+    """Exibe gráfico + botão de download PNG 300 DPI.
+    Ao clicar, gera o PNG com tema escuro e inicia o download automaticamente."""
+    st.plotly_chart(fig, width='stretch')
+    if st.button("⬇ PNG (300 DPI)", key=f"_btn_{key}"):
+        with st.spinner("Gerando PNG…"):
+            try:
+                import json as _j, base64 as _b64
+                import plotly.graph_objects as _go
+                fig2 = _go.Figure(_j.loads(fig.to_json()))
+                # Fundo transparente; automargin preserva labels longos
+                fig2.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                )
+                fig2.update_xaxes(automargin=True)
+                fig2.update_yaxes(automargin=True)
+                # scale=3.125 → 300 DPI equivalente (96 DPI × 3.125)
+                png = fig2.to_image(format="png", width=1100, scale=3.125)
+                b64 = _b64.b64encode(png).decode()
+                fn = filename.replace("'", "").replace('"', "")
+                # Cria Blob no contexto do parent e dispara download automaticamente
+                components.html(f"""<script>
+(function(){{
+    var bin=atob('{b64}'),bytes=new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+    var blob=new Blob([bytes],{{type:'image/png'}});
+    var url=window.parent.URL.createObjectURL(blob);
+    var a=window.parent.document.createElement('a');
+    a.href=url; a.download='{fn}.png';
+    window.parent.document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){{
+        window.parent.document.body.removeChild(a);
+        window.parent.URL.revokeObjectURL(url);
+    }},200);
+}})();
+</script>""", height=0)
+            except Exception:
+                st.caption("Exportação indisponível — verifique kaleido.")
 
 
 def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", horas_dia=24):
@@ -696,13 +739,47 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
                 return Paragraph('[Grafico indisponivel]', S(8, color=C_GREY))
             return RLImage(io.BytesIO(png), width=w_cm*cm, height=h_cm*cm)
 
+        # ── Pré-computa valores de custo (usados no sumário e na seção de custos) ──
+        paid_df = df[df['paid']].copy()
+        daily_c = paid_df.groupby('data').agg(
+            receita=('Receita(R$)','sum'), kwh=('Energia(kWh)','sum')).reset_index()
+        daily_c['custo'] = daily_c['receita']*(custo_pct/100) + daily_c['kwh']*custo_kwh
+        daily_c['lucro'] = daily_c['receita'] - daily_c['custo']
+        total_r = daily_c['receita'].sum()
+        total_c = daily_c['custo'].sum()
+        total_l = daily_c['lucro'].sum()
+        margem  = total_l/total_r*100 if total_r else 0
+
+        # ── Tenta baixar o logo ──────────────────────────────────────────────
+        _logo_img = None
+        try:
+            import urllib.request as _ur
+            _logo_data = _ur.urlopen(
+                'https://upload.wikimedia.org/wikipedia/commons/2/2b/Logomarca_Intelbras_verde.png',
+                timeout=5).read()
+            _logo_img = RLImage(io.BytesIO(_logo_data), width=3.6*cm, height=1.4*cm)
+        except Exception:
+            pass
+
         story = []
 
         # ── CAPA ─────────────────────────────────────────────────────────────
         story.append(Spacer(1, 0.5*cm))
-        story.append(Paragraph('RELATORIO FINANCEIRO', S(8, bold=True, color=C_GREY)))
-        story.append(Spacer(1, 4))
-        story.append(Paragraph('Eletropostos Dashboard', S(20, bold=True, color=C_BLACK)))
+        _cover_hdr_left = [
+            Paragraph('RELATÓRIO FINANCEIRO', S(8, bold=True, color=C_GREY)),
+        ]
+        _cover_hdr_right = [_logo_img] if _logo_img else [Paragraph('', S(8))]
+        _cov_tbl = Table(
+            [[ _cover_hdr_left[0], _cover_hdr_right[0] ]],
+            colWidths=[W - 4.2*cm, 4.2*cm],
+        )
+        _cov_tbl.setStyle(TableStyle([
+            ('ALIGN',   (1, 0), (1, 0), 'RIGHT'),
+            ('VALIGN',  (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        story.append(_cov_tbl)
+        story.append(Spacer(1, 6))
+        story.append(Paragraph('Dashboard Financeiro', S(20, bold=True, color=C_BLACK)))
         story.append(Paragraph(title, S(12, bold=True, color=C_BLUE)))
         story.append(Spacer(1, 4))
         story.append(Paragraph(
@@ -713,6 +790,54 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story.append(Spacer(1, 8))
         story.append(HRFlowable(width=W, thickness=2, color=C_GREEN))
         story.append(Spacer(1, 12))
+
+        # ── SUMÁRIO EXECUTIVO ─────────────────────────────────────────────────
+        story += section_hdr('SUMÁRIO EXECUTIVO')
+        _exec_items = [
+            ('Período', f"{kpis['days']} dias  ·  {kpis['total_sessions']:,} sessões registradas"),
+            ('Receita confirmada',
+             f"R$ {kpis['revenue']:,.2f}  (R$ {kpis['rev_per_day']:,.0f}/dia de média)"),
+            ('Energia entregue',
+             f"{kpis['energy_kwh']:,.0f} kWh  ·  R$ {kpis['rev_per_kwh']:.2f}/kWh médio"),
+            ('Ticket médio',
+             f"R$ {kpis['avg_ticket']:.2f}  ·  {kpis['sessions_per_day']:.1f} sessões/dia"),
+            ('Conversão',
+             f"{kpis['conversion']:.1f}% de aprovação  ·  reprovação de {kpis['rejection_rate']:.1f}%"),
+            ('Usuários',
+             f"{kpis['unique_users']:,} únicos  ·  {kpis['power_users']} power users "
+             f"({kpis['power_rev_pct']:.1f}% da receita)"),
+            ('Resultado estimado',
+             f"Lucro de R$ {total_l:,.0f}  ·  margem de {margem:.1f}%"),
+            ('Projeção anual',
+             f"R$ {kpis['proj_annual']:,.0f}  (baseado no ritmo do período)"),
+        ]
+        if kpis['pending_rev'] > 0:
+            _exec_items.append(('(!) Risco',
+                f"R$ {kpis['pending_rev']:,.2f} em pagamentos pendentes — revisar gateway"))
+        if kpis['idle_fee'] > 0:
+            _exec_items.append(('Idle fee',
+                f"R$ {kpis['idle_fee']:,.2f} em {kpis['idle_sessions']} sessões por ociosidade"))
+
+        _exec_data = [[Paragraph(k, S(8, bold=True, color=C_GREY)),
+                       Paragraph(v, S(8, color=C_BLACK))]
+                      for k, v in _exec_items]
+        _exec_tbl = Table(_exec_data, colWidths=[4.2*cm, W - 4.2*cm])
+        _exec_tbl.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), C_BG),
+            ('ROWBACKGROUNDS', (0, 0), (-1, -1), [C_BG, C_WHITE]),
+            ('GRID', (0, 0), (-1, -1), 0.3, C_BORD),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('LEFTPADDING', (0, 0), (-1, -1), 7),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 7),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            # Linha de risco em tom vermelho claro
+            *([('BACKGROUND', (0, len(_exec_items)-1), (-1, len(_exec_items)-1),
+                rl_colors.HexColor('#FDECEA'))]
+              if kpis['pending_rev'] > 0 else []),
+        ]))
+        story.append(_exec_tbl)
+        story.append(Spacer(1, 10))
 
         # ── KPIs PRINCIPAIS ───────────────────────────────────────────────────
         story += section_hdr('INDICADORES PRINCIPAIS')
@@ -736,26 +861,87 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         ]))
         story.append(Spacer(1, 10))
 
-        # ── ANALISE DE CUSTOS ─────────────────────────────────────────────────
-        paid_df = df[df['paid']].copy()
-        daily_c = paid_df.groupby('data').agg(
-            receita=('Receita(R$)','sum'), kwh=('Energia(kWh)','sum')).reset_index()
-        daily_c['custo'] = daily_c['receita']*(custo_pct/100) + daily_c['kwh']*custo_kwh
-        daily_c['lucro'] = daily_c['receita'] - daily_c['custo']
-        total_r = daily_c['receita'].sum()
-        total_c = daily_c['custo'].sum()
-        total_l = daily_c['lucro'].sum()
-        margem  = total_l/total_r*100 if total_r else 0
-
-        story += section_hdr('ANALISE DE CUSTOS')
+        # ── ANÁLISE DE CUSTOS ─────────────────────────────────────────────────
+        story += section_hdr('ANÁLISE DE CUSTOS')
         story.append(kv_table([
             ['Custo energia (R$/kWh)', f"R$ {custo_kwh:.2f}",
              'Custo operacional (%)', f"{custo_pct:.1f}%"],
             ['Receita total', f"R$ {total_r:,.2f}",
              'Custo total', f"R$ {total_c:,.2f}"],
             ['Lucro total', f"R$ {total_l:,.2f}",
-             'Margem liquida', f"{margem:.1f}%"],
+             'Margem líquida', f"{margem:.1f}%"],
         ]))
+        story.append(Spacer(1, 8))
+
+        # ── DRE SEMANAL (logo após análise de custos) ─────────────────────────
+        story += section_hdr('DRE — DEMONSTRATIVO DE RESULTADO POR SEMANA')
+        _dre = build_dre_table(df, custo_kwh, custo_pct)
+        if len(_dre) == 0:
+            story.append(Paragraph('Dados insuficientes para gerar a DRE.', S(8, color=C_GREY)))
+        else:
+            _sem_cols = [f"Sem {int(w)}" for w in _dre['semana']]
+            _n_sem = len(_sem_cols)
+            _ind_w = 4.0*cm; _tot_w = 2.6*cm
+            _sem_w = max(1.6*cm, (W - _ind_w - _tot_w) / max(_n_sem, 1))
+            _cw_dre = [_ind_w] + [_sem_w]*_n_sem + [_tot_w]
+            _C_RED    = rl_colors.HexColor('#C0392B')
+            _C_LGREEN = rl_colors.HexColor('#D5F5ED')
+            _C_LRED   = rl_colors.HexColor('#FDECEA')
+            _dre_totals = {
+                'Sessões Pagas':     f"{int(_dre['sessoes'].sum()):,}",
+                'kWh Entregues':     f"{_dre['kwh'].sum():,.1f}",
+                'R$ Início Recarga': f"R$ {_dre['r_inicio'].sum():,.2f}",
+                'R$ Energia (kWh)':  f"R$ {_dre['r_kwh_rec'].sum():,.2f}",
+                'R$ Ociosidade':     f"R$ {_dre['r_ocio'].sum():,.2f}",
+                'RECEITA TOTAL':     f"R$ {_dre['receita_total'].sum():,.2f}",
+                '(-) Custo Energia': f"R$ {_dre['custo_energia'].sum():,.2f}",
+                '(-) Custo Operac.': f"R$ {_dre['custo_operacional'].sum():,.2f}",
+                '(=) LUCRO BRUTO':   f"R$ {_dre['lucro_bruto'].sum():,.2f}",
+                'Margem (%)':        (f"{_dre['lucro_bruto'].sum()/_dre['receita_total'].sum()*100:.1f}%"
+                                      if _dre['receita_total'].sum() else '–'),
+            }
+            _dre_inds = [
+                ('Sessões Pagas',    [f"{int(r['sessoes']):,}"           for _,r in _dre.iterrows()]),
+                ('kWh Entregues',    [f"{r['kwh']:,.1f}"                  for _,r in _dre.iterrows()]),
+                ('R$ Início Recarga',[f"R$ {r['r_inicio']:,.2f}"          for _,r in _dre.iterrows()]),
+                ('R$ Energia (kWh)', [f"R$ {r['r_kwh_rec']:,.2f}"         for _,r in _dre.iterrows()]),
+                ('R$ Ociosidade',    [f"R$ {r['r_ocio']:,.2f}"            for _,r in _dre.iterrows()]),
+                ('RECEITA TOTAL',    [f"R$ {r['receita_total']:,.2f}"     for _,r in _dre.iterrows()]),
+                ('(-) Custo Energia',[f"R$ {r['custo_energia']:,.2f}"     for _,r in _dre.iterrows()]),
+                ('(-) Custo Operac.',[f"R$ {r['custo_operacional']:,.2f}" for _,r in _dre.iterrows()]),
+                ('(=) LUCRO BRUTO',  [f"R$ {r['lucro_bruto']:,.2f}"       for _,r in _dre.iterrows()]),
+                ('Margem (%)',       [f"{r['margem']:.1f}%"               for _,r in _dre.iterrows()]),
+            ]
+            _hdr_dre = [Paragraph('Indicador', S(7, bold=True, color=C_GREY))]
+            _hdr_dre += [Paragraph(s, S(7, bold=True, color=C_GREY, align=TA_RIGHT)) for s in _sem_cols]
+            _hdr_dre += [Paragraph('TOTAL', S(7, bold=True, color=C_GREY, align=TA_RIGHT))]
+            _trows_dre = [_hdr_dre]
+            _style_dre = [
+                ('BACKGROUND',(0,0),(-1,0),C_HDR),
+                ('GRID',(0,0),(-1,-1),0.3,C_BORD),
+                ('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4),
+                ('LEFTPADDING',(0,0),(-1,-1),5),('RIGHTPADDING',(0,0),(-1,-1),5),
+                ('ROWBACKGROUNDS',(0,1),(-1,-1),[C_BG,C_WHITE]),
+                ('ALIGN',(1,0),(-1,-1),'RIGHT'),
+            ]
+            for _i, (_lbl, _vals) in enumerate(_dre_inds):
+                _ri = _i + 1
+                _is_r = _lbl == 'RECEITA TOTAL'; _is_l = _lbl == '(=) LUCRO BRUTO'
+                _is_c = _lbl.startswith('(-)')  ; _is_m = _lbl == 'Margem (%)'
+                _lc = C_GREEN if (_is_l or _is_m) else (_C_RED if _is_c else C_BLACK)
+                _sl = S(7, bold=(_is_r or _is_l), color=_lc)
+                _sv = S(7, bold=(_is_r or _is_l), color=_lc, align=TA_RIGHT)
+                _row = [Paragraph(_lbl, _sl)]
+                _row += [Paragraph(v, _sv) for v in _vals]
+                _row += [Paragraph(_dre_totals[_lbl], _sv)]
+                _trows_dre.append(_row)
+                if _is_r or _is_l or _is_m:
+                    _style_dre.append(('BACKGROUND',(0,_ri),(-1,_ri),_C_LGREEN))
+                elif _is_c:
+                    _style_dre.append(('BACKGROUND',(0,_ri),(-1,_ri),_C_LRED))
+            _dre_tbl2 = Table(_trows_dre, colWidths=_cw_dre)
+            _dre_tbl2.setStyle(TableStyle(_style_dre))
+            story.append(_dre_tbl2)
         story.append(Spacer(1, 8))
 
         # ── GRAFICOS — cada um em linha própria ───────────────────────────────
@@ -841,7 +1027,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
 
         col_est = 'Estação' if 'Estação' in df.columns else 'Estacao'
         if col_est in df.columns:
-            story += section_hdr('TABELA — TOP 15 ESTACOES POR RECEITA')
+            story += section_hdr('TABELA — TOP 15 ESTAÇÕES POR RECEITA')
             days_n = kpis['days'] or 1
             top = (df[df['paid']].groupby(col_est)
                    .agg(sessoes=('Receita(R$)','count'),
@@ -874,7 +1060,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
             story.append(Spacer(1, 10))
 
         # Tabela dia da semana
-        story += section_hdr('TABELA — DISTRIBUICAO POR DIA DA SEMANA')
+        story += section_hdr('TABELA — DISTRIBUIÇÃO POR DIA DA SEMANA')
         df2 = df.copy()
         df2['dow'] = df2['data_inicio'].dt.dayofweek
         wd_rev  = df2[df2['paid']].groupby('dow')['Receita(R$)'].sum().reindex(range(7), fill_value=0)
@@ -907,8 +1093,8 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story.append(HRFlowable(width=W, thickness=0.5, color=C_BORD))
         story.append(Spacer(1, 4))
         story.append(Paragraph(
-            f'Eletropostos Dashboard  |  {datetime.date.today().strftime("%d/%m/%Y")}  |  '
-            f'Relatorio gerado automaticamente',
+            f'Dashboard financeiro  |  {datetime.date.today().strftime("%d/%m/%Y")}  |  '
+            f'Relatório gerado automaticamente',
             S(7, color=C_GREY, align=TA_CENTER)
         ))
 
@@ -994,7 +1180,7 @@ def fig_revenue_sources(df, color):
     total = r_inicio + r_kwh + r_ocio
     if total == 0:
         return go.Figure()
-    labels = ['Inicio de Recarga', 'Venda de Energia (kWh)', 'Ociosidade']
+    labels = ['Início de Recarga', 'Venda de Energia (kWh)', 'Ociosidade']
     values = [r_inicio, r_kwh, r_ocio]
     r,g,b = int(color[1:3],16), int(color[3:5],16), int(color[5:7],16)
     pie_colors = [color, f'rgba({r},{g},{b},0.55)', COLORS[2]]
@@ -1037,7 +1223,7 @@ def fig_revenue_sources_bar(df, color):
     x = ['Sem ' + str(w) for w in weekly['semana']]
     r,g,b = int(color[1:3],16), int(color[3:5],16), int(color[5:7],16)
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=x, y=weekly['r_inicio'], name='Inicio de Recarga',
+    fig.add_trace(go.Bar(x=x, y=weekly['r_inicio'], name='Início de Recarga',
                          marker_color=color, opacity=0.9))
     fig.add_trace(go.Bar(x=x, y=weekly['r_kwh'], name='Venda de Energia (kWh)',
                          marker_color=f'rgba({r},{g},{b},0.5)', opacity=0.9))
@@ -1080,7 +1266,7 @@ def build_dre_table(df, custo_kwh, custo_pct):
     return weekly
 
 
-def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct, anon, horas_dia=24):
+def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct, anon, horas_dia=24, uid=""):
     """Renderiza todos os KPIs e graficos — identico para modo individual e consolidado."""
 
     # ── ROW 1: 4 cards principais ─────────────────────────────────────────────
@@ -1145,35 +1331,35 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 
     # ── RECEITA DIARIA ────────────────────────────────────────────────────────
     section("Receita Diária")
-    st.plotly_chart(fig_daily(dfs), width='stretch')
+    _plotly_dl(fig_daily(dfs), "receita_diaria", f"daily_{uid}")
 
     # ── HORARIO + FUNIL ───────────────────────────────────────────────────────
     ca, cb = st.columns([3, 2])
     with ca:
         section("Distribuição Horária de Sessões")
-        st.plotly_chart(fig_hourly(dfs if is_consolidated else {list(dfs.keys())[0]: df}),
-                        width='stretch')
+        _plotly_dl(fig_hourly(dfs if is_consolidated else {list(dfs.keys())[0]: df}),
+                   "distribuicao_horaria", f"hourly_{uid}")
     with cb:
         section("Funil de Conversão")
-        st.plotly_chart(fig_funnel(kpis), width='stretch')
+        _plotly_dl(fig_funnel(kpis), "funil_conversao", f"funnel_{uid}")
 
     # ── MEIOS DE PAGAMENTO + CONECTORES ───────────────────────────────────────
     cc, cd = st.columns(2)
     with cc:
         section("Meios de Pagamento")
-        st.plotly_chart(fig_payment(df, color), width='stretch')
+        _plotly_dl(fig_payment(df, color), "meios_pagamento", f"payment_{uid}")
     with cd:
         section("Conectores (Sessões e Receita)")
-        st.plotly_chart(fig_connectors(df), width='stretch')
+        _plotly_dl(fig_connectors(df), "conectores", f"conn_{uid}")
 
     # ── DURACAO + SEMANAL ─────────────────────────────────────────────────────
     ce, cf = st.columns(2)
     with ce:
         section("Duração das Sessões com Ticket Médio")
-        st.plotly_chart(fig_duration(df, color), width='stretch')
+        _plotly_dl(fig_duration(df, color), "duracao_sessoes", f"duration_{uid}")
     with cf:
         section("Evolução Semanal (Receita e Sessões)")
-        st.plotly_chart(fig_weekly(df, color), width='stretch')
+        _plotly_dl(fig_weekly(df, color), "evolucao_semanal", f"weekly_{uid}")
 
     # ── TOP ESTACOES ──────────────────────────────────────────────────────────
     col_est = 'Estação' if 'Estação' in df.columns else 'Estacao'
@@ -1182,30 +1368,29 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         cg, ch = st.columns(2)
         with cg:
             section("Top 15 Estações por Receita")
-            st.plotly_chart(fig_top_stations(df, top_n=n_stations), width='stretch')
+            _plotly_dl(fig_top_stations(df, top_n=n_stations),
+                       "top_estacoes_receita", f"topst_{uid}")
         with ch:
             section("Top 15 Estações por Sessões/Dia")
-            st.plotly_chart(fig_top_stations_by_sessions(df, top_n=n_stations), width='stretch')
+            _plotly_dl(fig_top_stations_by_sessions(df, top_n=n_stations),
+                       "top_estacoes_sessoes", f"topss_{uid}")
 
-        col_occ_title, col_occ_help = st.columns([10, 1])
-        with col_occ_title:
-            section(f"Taxa de Ocupação — Top 15 Carregadores ({horas_dia}h/dia uteis)")
-    
-        st.plotly_chart(fig_occupancy(df, top_n=n_stations, horas_dia=horas_dia), width='stretch')
+        section(f"Taxa de Ocupação — Top 15 Carregadores ({horas_dia}h/dia uteis)")
+        _plotly_dl(fig_occupancy(df, top_n=n_stations, horas_dia=horas_dia),
+                   "ocupacao", f"occ_{uid}")
 
     # ── DIA DA SEMANA ─────────────────────────────────────────────────────────
     ci, cj = st.columns(2)
     with ci:
         section("Receita por Dia da Semana")
-        st.plotly_chart(fig_weekday_revenue(df, color), width='stretch')
+        _plotly_dl(fig_weekday_revenue(df, color), "receita_dia_semana", f"wdr_{uid}")
     with cj:
         section("Sessões por Dia da Semana")
-        st.plotly_chart(fig_weekday_sessions(df, color), width='stretch')
+        _plotly_dl(fig_weekday_sessions(df, color), "sessoes_dia_semana", f"wds_{uid}")
 
     # ── RECEITA VS CUSTO VS LUCRO ─────────────────────────────────────────────
     section("Receita vs Custo vs Lucro")
     fig_cost, daily_cost = fig_revenue_cost_profit(df, custo_kwh, custo_pct)
-    # KPIs de custo
     total_r = daily_cost['receita'].sum()
     total_c = daily_cost['custo'].sum()
     total_l = daily_cost['lucro'].sum()
@@ -1216,14 +1401,14 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     with ck3: kpi_card("Lucro Total", f"R$ {total_l:,.0f}", f"Margem {margem:.1f}%", COLORS[1])
     with ck4: kpi_card("Lucro/Dia", f"R$ {total_l/max(kpis['days'],1):,.0f}", "média do período", COLORS[3])
     st.markdown("<br>", unsafe_allow_html=True)
-    st.plotly_chart(fig_cost, width='stretch')
+    _plotly_dl(fig_cost, "receita_custo_lucro", f"cost_{uid}")
 
     # ── RECEITA POR ORIGEM ────────────────────────────────────────────────────
     section("Receita por Origem")
     r_inicio, r_kwh, r_ocio = _revenue_sources(df)
     total_src = r_inicio + r_kwh + r_ocio
     rs1, rs2, rs3 = st.columns(3)
-    with rs1: kpi_card("Inicio de Recarga",
+    with rs1: kpi_card("Início de Recarga",
                        f"R$ {r_inicio:,.2f}",
                        f"{r_inicio/total_src*100:.1f}% da receita" if total_src else "–",
                        color)
@@ -1239,13 +1424,13 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 
     col_pie, col_bar = st.columns([1, 2])
     with col_pie:
-        st.plotly_chart(fig_revenue_sources(df, color), width='stretch')
+        _plotly_dl(fig_revenue_sources(df, color), "receita_por_origem", f"rs_{uid}")
     with col_bar:
-        st.plotly_chart(fig_revenue_sources_bar(df, color), width='stretch')
+        _plotly_dl(fig_revenue_sources_bar(df, color), "receita_origem_semanal", f"rsb_{uid}")
 
     # ── SEGMENTACAO USUARIOS ──────────────────────────────────────────────────
-    section("Segmentacao de Usuarios e Receita por Segmento")
-    st.plotly_chart(fig_users(df, color, kpis['tag_col']), width='stretch')
+    section("Segmentação de Usuarios e Receita por Segmento")
+    _plotly_dl(fig_users(df, color, kpis['tag_col']), "segmentacao_usuarios", f"users_{uid}")
 
     # ── INSIGHTS ──────────────────────────────────────────────────────────────
     section("Insights e Oportunidades")
@@ -1449,7 +1634,7 @@ if not uploaded_files:
         '<div style="text-align:center;padding:4rem 2rem;color:#6B7280">'
         '<div style="font-size:3rem;margin-bottom:1rem">&#9889;</div>'
         '<div style="font-size:1.2rem;font-weight:700;color:#F0F2F8;margin-bottom:0.5rem">Nenhum arquivo carregado</div>'
-        '<div style="font-size:0.75rem;line-height:1.7">Use o painel lateral para fazer upload dos arquivos .xlsx de relatorio de recargas.</div>'
+        '<div style="font-size:0.75rem;line-height:1.7">Use o painel lateral para fazer upload dos arquivos .xlsx de relatório de recargas.</div>'
         '</div>',
         unsafe_allow_html=True
     )
@@ -1538,7 +1723,8 @@ if _selected_station and _col_est:
 if mode == "Consolidado (todos os arquivos)" or len(dfs) == 1:
     kpis = compute_kpis(df_all)
     render_dashboard(df_all, dfs, kpis, ACCENT, is_consolidated=True,
-                     custo_kwh=custo_kwh, custo_pct=custo_pct, anon=anon, horas_dia=horas_dia)
+                     custo_kwh=custo_kwh, custo_pct=custo_pct, anon=anon, horas_dia=horas_dia,
+                     uid="all")
 
 # ─── INDIVIDUAL VIEW ──────────────────────────────────────────────────────────
 else:
@@ -1556,7 +1742,8 @@ else:
                 unsafe_allow_html=True
             )
             render_dashboard(df, {name: df}, kpis, color, is_consolidated=False,
-                             custo_kwh=custo_kwh, custo_pct=custo_pct, anon=anon, horas_dia=horas_dia)
+                             custo_kwh=custo_kwh, custo_pct=custo_pct, anon=anon, horas_dia=horas_dia,
+                             uid=name[:20].replace(" ", "_").replace("/", "_"))
 
 # ─── FOOTER ───────────────────────────────────────────────────────────────────
 st.markdown(
