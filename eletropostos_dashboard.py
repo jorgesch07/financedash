@@ -1260,7 +1260,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
             section(f"Taxa de Ocupacao — Top 15 Carregadores ({horas_dia}h/dia uteis)")
         with col_occ_help:
             st.markdown(
-                help='<span title="Como calcular: tempo total em uso ÷ (dias × {horas_dia}h disponíveis) x 100 | Verde ≥ 80% | Azul 50-80% | Vermelho < 50%" style="cursor:help;font-size:1.1rem;color:#6B7280;display:inline-block;margin-top:0.9rem">&#63;</span>',
+                f'<span title="Como calcular: tempo total em uso ÷ (dias × {horas_dia}h disponíveis) x 100 | Verde ≥ 80% | Azul 50-80% | Vermelho < 50%" style="cursor:help;font-size:1.1rem;color:#6B7280;display:inline-block;margin-top:0.9rem">&#63;</span>',
                 unsafe_allow_html=True
             )
             
