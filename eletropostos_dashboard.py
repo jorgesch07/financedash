@@ -210,9 +210,9 @@ components.html("""
 
         // ── Estação ──
         var g2 = pdoc.createElement('div'); g2.className = 'ib-filter-group';
-        var l2 = pdoc.createElement('span'); l2.className = 'ib-filter-label'; l2.textContent = 'Estacao';
+        var l2 = pdoc.createElement('span'); l2.className = 'ib-filter-label'; l2.textContent = 'Estação';
         var s2 = pdoc.createElement('select'); s2.id = 'ib-station-select'; s2.className = 'ib-select';
-        var o2 = pdoc.createElement('option'); o2.value=''; o2.textContent='Todas as estacoes';
+        var o2 = pdoc.createElement('option'); o2.value=''; o2.textContent='Todas as estações';
         s2.appendChild(o2);
         s2.addEventListener('change', function() { applyFilters(); });
         g2.appendChild(l2); g2.appendChild(s2);
@@ -488,7 +488,7 @@ def fig_users(df, color, tag_col):
     r,g,b = int(color[1:3],16), int(color[3:5],16), int(color[5:7],16)
     alphas = [0.3,0.5,0.75,1.0]
     seg_colors = [f'rgba({r},{g},{b},{a})' for a in alphas]
-    fig = make_subplots(rows=1, cols=2, subplot_titles=['Usuarios por segmento','Receita por segmento'],
+    fig = make_subplots(rows=1, cols=2, subplot_titles=['Usuários por segmento','Receita por segmento'],
                         horizontal_spacing=0.12)
     fig.add_trace(go.Bar(x=seg_cnt.index.tolist(), y=seg_cnt.values, marker_color=seg_colors, showlegend=False), row=1, col=1)
     fig.add_trace(go.Bar(x=seg_rev.index.tolist(), y=seg_rev.values, marker_color=seg_colors, showlegend=False), row=1, col=2)
@@ -787,20 +787,20 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story.append(kv_table([
             ['Receita Confirmada', f"R$ {kpis['revenue']:,.2f}",
              'Sessoes Pagas', f"{kpis['paid_sessions']:,}"],
-            ['Energia Entregue', f"{kpis['energy_kwh']:,.1f} kWh",
-             'R$/kWh Medio', f"R$ {kpis['rev_per_kwh']:.2f}"],
-            ['Ticket Medio', f"R$ {kpis['avg_ticket']:.2f}",
-             'Sessoes/Dia', f"{kpis['sessions_per_day']:.1f}"],
+            ['Energia Consumida', f"{kpis['energy_kwh']:,.1f} kWh",
+             'R$/kWh Médio', f"R$ {kpis['rev_per_kwh']:.2f}"],
+            ['Ticket Médio', f"R$ {kpis['avg_ticket']:.2f}",
+             'Sessões/Dia', f"{kpis['sessions_per_day']:.1f}"],
             ['Receita/Dia', f"R$ {kpis['rev_per_day']:,.0f}",
              'kWh/Dia', f"{kpis['kwh_per_day']:.1f}"],
-            ['Conversao', f"{kpis['conversion']:.1f}%",
-             'Usuarios Unicos', f"{kpis['unique_users']:,}"],
+            ['Conversão', f"{kpis['conversion']:.1f}%",
+             'Usuários Únicos', f"{kpis['unique_users']:,}"],
             ['Power Users (5+)', f"{kpis['power_users']}",
              'Receita Power Users', f"{kpis['power_rev_pct']:.1f}%"],
             ['Receita Pendente', f"R$ {kpis['pending_rev']:,.2f}",
              'Idle Fee Total', f"R$ {kpis['idle_fee']:,.2f}"],
-            ['Projecao Anual', f"R$ {kpis['proj_annual']:,.0f}",
-             'Taxa Reprovacao', f"{kpis['rejection_rate']:.1f}%"],
+            ['Projeção Anual', f"R$ {kpis['proj_annual']:,.0f}",
+             'Taxa Reprovação', f"{kpis['rejection_rate']:.1f}%"],
         ]))
         story.append(Spacer(1, 10))
 
@@ -828,7 +828,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
 
         # ── GRAFICOS — cada um em linha própria ───────────────────────────────
         story.append(PageBreak())
-        story += section_hdr('RECEITA DIARIA')
+        story += section_hdr('RECEITA DIÁRIA')
         story.append(chart(fig_daily(dfs), h_cm=6))
         story.append(Spacer(1, 10))
 
@@ -838,11 +838,11 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story.append(Spacer(1, 10))
 
         story.append(PageBreak())
-        story += section_hdr('DISTRIBUICAO HORARIA DE SESSOES')
+        story += section_hdr('DISTRIBUIÇÃO HORÁRIA DE SESSÕES')
         story.append(chart(fig_hourly(dfs), h_cm=6))
         story.append(Spacer(1, 10))
 
-        story += section_hdr('FUNIL DE CONVERSAO')
+        story += section_hdr('FUNIL DE CONVERSÃO')
         story.append(chart(fig_funnel(kpis), h_cm=5))
         story.append(Spacer(1, 10))
 
@@ -851,7 +851,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story.append(chart(fig_weekday_revenue(df, color), h_cm=5.5))
         story.append(Spacer(1, 10))
 
-        story += section_hdr('SESSOES POR DIA DA SEMANA')
+        story += section_hdr('SESSÕES POR DIA DA SEMANA')
         story.append(chart(fig_weekday_sessions(df, color), h_cm=5.5))
         story.append(Spacer(1, 10))
 
@@ -860,16 +860,16 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story.append(chart(fig_payment(df, color), h_cm=5.5))
         story.append(Spacer(1, 10))
 
-        story += section_hdr('CONECTORES (SESSOES E RECEITA)')
+        story += section_hdr('CONECTORES (SESSÕES E RECEITA)')
         story.append(chart(fig_connectors(df), h_cm=5))
         story.append(Spacer(1, 10))
 
         story.append(PageBreak())
-        story += section_hdr('DURACAO DAS SESSOES COM TICKET MEDIO')
+        story += section_hdr('DURAÇÃO DAS SESSÕES COM TICKET MÉDIO')
         story.append(chart(fig_duration(df, color), h_cm=5.5))
         story.append(Spacer(1, 10))
 
-        story += section_hdr('EVOLUCAO SEMANAL (RECEITA E SESSOES)')
+        story += section_hdr('EVOLUÇÃO SEMANAL (RECEITA E SESSÕES)')
         story.append(chart(fig_weekly(df, color), h_cm=5.5))
         story.append(Spacer(1, 10))
 
@@ -879,20 +879,20 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         if n_st > 0:
             h_st = max(5.5, n_st * 0.48)
             story.append(PageBreak())
-            story += section_hdr('TOP 15 ESTACOES POR RECEITA')
+            story += section_hdr('TOP 15 ESTAÇÕES POR RECEITA')
             story.append(chart(fig_top_stations(df, top_n=n_st), h_cm=h_st))
             story.append(Spacer(1, 10))
 
-            story += section_hdr('TOP 15 ESTACOES POR SESSOES/DIA')
+            story += section_hdr('TOP 15 ESTAÇÕES POR SESSÕES/DIA')
             story.append(chart(fig_top_stations_by_sessions(df, top_n=n_st), h_cm=h_st))
             story.append(Spacer(1, 10))
 
             story.append(PageBreak())
-            story += section_hdr('TAXA DE OCUPACAO — TOP 15 CARREGADORES')
+            story += section_hdr('TAXA DE OCUPAÇÃO — TOP 15 CARREGADORES')
             story.append(chart(fig_occupancy(df, top_n=n_st, horas_dia=horas_dia), h_cm=h_st))
             story.append(Spacer(1, 10))
 
-        story += section_hdr('SEGMENTACAO DE USUARIOS')
+        story += section_hdr('SEGMENTAÇÃO DE USUÁRIOS')
         story.append(chart(fig_users(df, color, kpis['tag_col']), h_cm=5.5))
         story.append(Spacer(1, 10))
 
@@ -900,7 +900,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story.append(chart(fig_revenue_sources(df, color), h_cm=5.5))
         story.append(Spacer(1, 10))
 
-        story += section_hdr('RECEITA POR ORIGEM — EVOLUCAO SEMANAL')
+        story += section_hdr('RECEITA POR ORIGEM — EVOLUÇÃO SEMANAL')
         story.append(chart(fig_revenue_sources_bar(df, color), h_cm=5))
         story.append(Spacer(1, 10))
 
@@ -1039,7 +1039,7 @@ def generate_insights(kpis, df):
                     f"Investigar causa: manutencao, sazonalidade ou falha tecnica."))
     insights.append(('Projecao anual',
         f"R$ {kpis['proj_annual']:,.0f}/ano baseado em {kpis['days']} dias de dados "
-        f"(R$ {kpis['rev_per_day']:,.0f}/dia de media)."))
+        f"(R$ {kpis['rev_per_day']:,.0f}/dia de média)."))
     return insights
 
 
@@ -1192,13 +1192,13 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
                        f"em {kpis['days']} dias analisados", color)
     with c10: kpi_card("kWh / Dia",
                        f"{kpis['kwh_per_day']:.1f} kWh",
-                       f"{kpis['avg_kwh']:.1f} kWh por sessao media", COLORS[1])
+                       f"{kpis['avg_kwh']:.1f} kWh por sessão média", COLORS[1])
     with c11: kpi_card("Receita por Ociosidade",
                        f"R$ {kpis['idle_fee']:,.2f}",
-                       f"{kpis['idle_sessions']} sessoes cobradas", COLORS[3])
-    with c12: kpi_card("Taxa de Reprovacao",
+                       f"{kpis['idle_sessions']} sessões cobradas", COLORS[3])
+    with c12: kpi_card("Taxa de Reprovação",
                        f"{kpis['rejection_rate']:.1f}%",
-                       f"{kpis['not_paid']} pagamentos nao aprovados", COLORS[2])
+                       f"{kpis['not_paid']} pagamentos não aprovados", COLORS[2])
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1207,22 +1207,22 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         st.markdown(
             f'<div class="alert-risk">&#9888; <strong>Risco financeiro:</strong> '
             f'R$ {kpis["pending_rev"]:,.2f} em pagamentos com status <em>pending</em>. '
-            f'Verificar integracao de gateway nas estacoes afetadas.</div>',
+            f'Verificar integração de gateway nas estações afetadas.</div>',
             unsafe_allow_html=True
         )
 
     # ── RECEITA DIARIA ────────────────────────────────────────────────────────
-    section("Receita Diaria")
+    section("Receita Diária")
     st.plotly_chart(fig_daily(dfs), width='stretch')
 
     # ── HORARIO + FUNIL ───────────────────────────────────────────────────────
     ca, cb = st.columns([3, 2])
     with ca:
-        section("Distribuicao Horaria de Sessoes")
+        section("Distribuição Horária de Sessões")
         st.plotly_chart(fig_hourly(dfs if is_consolidated else {list(dfs.keys())[0]: df}),
                         width='stretch')
     with cb:
-        section("Funil de Conversao")
+        section("Funil de Conversão")
         st.plotly_chart(fig_funnel(kpis), width='stretch')
 
     # ── MEIOS DE PAGAMENTO + CONECTORES ───────────────────────────────────────
@@ -1237,10 +1237,10 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     # ── DURACAO + SEMANAL ─────────────────────────────────────────────────────
     ce, cf = st.columns(2)
     with ce:
-        section("Duracao das Sessoes com Ticket Medio")
+        section("Duração das Sessoes com Ticket Médio")
         st.plotly_chart(fig_duration(df, color), width='stretch')
     with cf:
-        section("Evolucao Semanal (Receita e Sessoes)")
+        section("Evolução Semanal (Receita e Sessões)")
         st.plotly_chart(fig_weekly(df, color), width='stretch')
 
     # ── TOP ESTACOES ──────────────────────────────────────────────────────────
@@ -1249,10 +1249,10 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     if n_stations > 0:
         cg, ch = st.columns(2)
         with cg:
-            section("Top 15 Estacoes por Receita")
+            section("Top 15 Estações por Receita")
             st.plotly_chart(fig_top_stations(df, top_n=n_stations), width='stretch')
         with ch:
-            section("Top 15 Estacoes por Sessoes/Dia")
+            section("Top 15 Estações por Sessões/Dia")
             st.plotly_chart(fig_top_stations_by_sessions(df, top_n=n_stations), width='stretch')
 
         col_occ_title, col_occ_help = st.columns([10, 1])
@@ -1271,7 +1271,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         section("Receita por Dia da Semana")
         st.plotly_chart(fig_weekday_revenue(df, color), width='stretch')
     with cj:
-        section("Sessoes por Dia da Semana")
+        section("Sessões por Dia da Semana")
         st.plotly_chart(fig_weekday_sessions(df, color), width='stretch')
 
     # ── RECEITA VS CUSTO VS LUCRO ─────────────────────────────────────────────
@@ -1286,7 +1286,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     with ck1: kpi_card("Receita Total", f"R$ {total_r:,.0f}", f"Custo R$/kWh: {custo_kwh:.2f}", ACCENT)
     with ck2: kpi_card("Custo Total", f"R$ {total_c:,.0f}", f"Op. {custo_pct:.1f}% + energia", COLORS[2])
     with ck3: kpi_card("Lucro Total", f"R$ {total_l:,.0f}", f"Margem {margem:.1f}%", COLORS[1])
-    with ck4: kpi_card("Lucro/Dia", f"R$ {total_l/max(kpis['days'],1):,.0f}", "media do periodo", COLORS[3])
+    with ck4: kpi_card("Lucro/Dia", f"R$ {total_l/max(kpis['days'],1):,.0f}", "média do periodo", COLORS[3])
     st.markdown("<br>", unsafe_allow_html=True)
     st.plotly_chart(fig_cost, width='stretch')
 
@@ -1481,7 +1481,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown('<div style="font-size:0.62rem;color:#6B7280">modo de analise</div>', unsafe_allow_html=True)
-    mode = st.radio("", ["Por estacao (individual)", "Consolidado (todos os arquivos)"],
+    mode = st.radio("", ["Por estação (individual)", "Consolidado (todos os arquivos)"],
                     label_visibility="collapsed")
 
     anon = False
@@ -1499,10 +1499,10 @@ with st.sidebar:
     st.markdown('<div style="font-size:0.70rem;color:#9CA3AF;margin-bottom:0.5rem">Usado para calcular a taxa de ocupacao real dos carregadores</div>', unsafe_allow_html=True)
     col_h1, col_h2 = st.columns(2)
     with col_h1:
-        hora_inicio = st.number_input("Abertura", min_value=0, max_value=23, value=0, step=1,
+        hora_inicio = st.number_input("Abertura (h)", min_value=0, max_value=23, value=0, step=1,
                                        help="Hora de abertura do estabelecimento (0 = meia-noite)")
     with col_h2:
-        hora_fim = st.number_input("Fechamento", min_value=1, max_value=24, value=24, step=1,
+        hora_fim = st.number_input("Fechamento (h)", min_value=1, max_value=24, value=24, step=1,
                                     help="Hora de fechamento (24 = meia-noite)")
     horas_dia = max(1, hora_fim - hora_inicio)
     st.markdown(f'<div style="font-size:0.68rem;color:#00C9A7;margin-top:2px">&#9201; {horas_dia}h disponiveis/dia</div>', unsafe_allow_html=True)
