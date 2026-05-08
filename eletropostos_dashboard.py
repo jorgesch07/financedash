@@ -1170,10 +1170,10 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 
     # ── ROW 2: 4 cards secundarios ────────────────────────────────────────────
     c5,c6,c7,c8 = st.columns(4)
-    with c5: kpi_card("Conversao",
+    with c5: kpi_card("Conversão",
                       f"{kpis['conversion']:.1f}%",
                       f"{kpis['approval']:.1f}% do total de sessões monetizado", COLORS[4])
-    with c6: kpi_card("Usuarios Unicos",
+    with c6: kpi_card("Usuários Únicos",
                       f"{kpis['unique_users']:,}",
                       f"{kpis['one_time']} one-time  |  {kpis['power_users']} power users", COLORS[5])
     with c7: kpi_card("Power Users (5+ sessões)",
@@ -1282,7 +1282,7 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     with ck1: kpi_card("Receita Total", f"R$ {total_r:,.0f}", f"Custo R$/kWh: {custo_kwh:.2f}", ACCENT)
     with ck2: kpi_card("Custo Total", f"R$ {total_c:,.0f}", f"Op. {custo_pct:.1f}% + energia", COLORS[2])
     with ck3: kpi_card("Lucro Total", f"R$ {total_l:,.0f}", f"Margem {margem:.1f}%", COLORS[1])
-    with ck4: kpi_card("Lucro/Dia", f"R$ {total_l/max(kpis['days'],1):,.0f}", "média do periodo", COLORS[3])
+    with ck4: kpi_card("Lucro/Dia", f"R$ {total_l/max(kpis['days'],1):,.0f}", "média do período", COLORS[3])
     st.markdown("<br>", unsafe_allow_html=True)
     st.plotly_chart(fig_cost, width='stretch')
 
@@ -1507,7 +1507,7 @@ with st.sidebar:
 st.markdown(
     '<div style="margin-bottom:1.5rem">'
     '<div class="page-title">Dashboard <span style="color:#00C9A7">Financeiro</span></div>'
-    '<div class="page-subtitle">Software em testes, configura os dados antes de transmiti-los</div>'
+    '<div class="page-subtitle">Software em testes, confira os dados antes de transmiti-los</div>'
     '</div>',
     unsafe_allow_html=True
 )
