@@ -781,7 +781,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
              f"{kpis['unique_users']:,} únicos  ·  {kpis['power_users']} power users "
              f"({kpis['power_rev_pct']:.1f}% da receita)"),
             ('Resultado estimado',
-             f"Lucro de R$ {total_l:,.0f}  ·  margem de {margem:.1f}%"),
+             f"Lucro bruto de R$ {total_l:,.0f}  ·  margem de {margem:.1f}%"),
             ('Projeção anual',
              f"R$ {kpis['proj_annual']:,.0f}  (baseado no ritmo do período)"),
         ]
@@ -842,7 +842,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
              'Custo operacional (%)', f"{custo_pct:.1f}%"],
             ['Receita total', f"R$ {total_r:,.2f}",
              'Custo total', f"R$ {total_c:,.2f}"],
-            ['Lucro total', f"R$ {total_l:,.2f}",
+            ['Lucro bruto total', f"R$ {total_l:,.2f}",
              'Margem líquida', f"{margem:.1f}%"],
         ]))
         story.append(Spacer(1, 10))
@@ -1239,8 +1239,95 @@ def build_dre_table(df, custo_kwh, custo_pct):
     weekly['lucro_bruto'] = weekly['receita_total'] - weekly['custo_total']
     weekly['margem'] = weekly.apply(
         lambda r: r['lucro_bruto']/r['receita_total']*100 if r['receita_total'] else 0, axis=1)
-
+    weekly = weekly.sort_values('semana').reset_index(drop=True)
+    weekly['var_receita'] = weekly['receita_total'].pct_change() * 100
+    weekly['var_lucro']   = weekly['lucro_bruto'].pct_change() * 100
     return weekly
+
+
+def build_dre_monthly(df, custo_kwh, custo_pct):
+    """Monta o DataFrame da DRE mensal com variação mês a mês."""
+    paid = df[df['paid']].copy()
+    for c in ['Receita(R$) por Início de Recarga','Receita(R$) por kWh','Valor Ociosidade','Energia(kWh)']:
+        if c not in paid.columns: paid[c] = 0
+        paid[c] = pd.to_numeric(paid[c], errors='coerce').fillna(0)
+    paid['r_inicio'] = paid['Receita(R$) por Início de Recarga']
+    paid['r_kwh']    = paid['Energia(kWh)'] * paid['Receita(R$) por kWh']
+    paid['r_ocio']   = paid['Valor Ociosidade']
+    paid['mes']      = paid['data_inicio'].dt.to_period('M')
+
+    monthly = paid.groupby('mes').agg(
+        r_inicio=('r_inicio','sum'),
+        r_kwh_rec=('r_kwh','sum'),
+        r_ocio=('r_ocio','sum'),
+        sessoes=('Receita(R$)','count'),
+        kwh=('Energia(kWh)','sum'),
+        receita=('Receita(R$)','sum'),
+    ).reset_index()
+
+    monthly['receita_total']    = monthly['r_inicio'] + monthly['r_kwh_rec'] + monthly['r_ocio']
+    monthly['custo_energia']    = monthly['kwh'] * custo_kwh
+    monthly['custo_operacional']= monthly['receita_total'] * (custo_pct / 100)
+    monthly['custo_total']      = monthly['custo_energia'] + monthly['custo_operacional']
+    monthly['lucro_bruto']      = monthly['receita_total'] - monthly['custo_total']
+    monthly['margem']           = monthly.apply(
+        lambda r: r['lucro_bruto']/r['receita_total']*100 if r['receita_total'] else 0, axis=1)
+    monthly['var_receita'] = monthly['receita_total'].pct_change() * 100
+    monthly['var_lucro']   = monthly['lucro_bruto'].pct_change() * 100
+    monthly['mes_label']   = monthly['mes'].dt.strftime('%b/%Y')
+    return monthly
+
+
+def build_dre_excel(dre_sem, dre_mes):
+    """Gera bytes de Excel com DRE semanal e mensal em abas separadas."""
+    import io as _io
+
+    INDICADORES = [
+        ('Sessões Pagas',     'sessoes',          False),
+        ('kWh Entregues',     'kwh',              False),
+        ('R$ Início Recarga', 'r_inicio',         True),
+        ('R$ Energia (kWh)',  'r_kwh_rec',        True),
+        ('R$ Ociosidade',     'r_ocio',           True),
+        ('RECEITA TOTAL',     'receita_total',    True),
+        ('(-) Custo Energia', 'custo_energia',    True),
+        ('(-) Custo Operac.', 'custo_operacional',True),
+        ('(=) LUCRO BRUTO',   'lucro_bruto',      True),
+        ('Margem (%)',        'margem',           False),
+        ('Var% Receita',      'var_receita',      False),
+        ('Var% Lucro',        'var_lucro',        False),
+    ]
+
+    def _build_sheet(dre, period_col, period_prefix):
+        cols = [f"{period_prefix}{p}" for p in dre[period_col].astype(str)]
+        records = []
+        for label, field, is_money in INDICADORES:
+            row = {'Indicador': label}
+            for col, (_, r) in zip(cols, dre.iterrows()):
+                v = r[field]
+                if field in ('var_receita', 'var_lucro'):
+                    row[col] = f"{v:+.1f}%" if pd.notna(v) else '–'
+                elif field == 'margem':
+                    row[col] = f"{v:.1f}%"
+                elif field == 'sessoes':
+                    row[col] = int(v)
+                elif is_money:
+                    row[col] = round(float(v), 2)
+                else:
+                    row[col] = round(float(v), 1)
+            if field not in ('var_receita', 'var_lucro', 'margem'):
+                tot = dre[field].sum()
+                row['TOTAL'] = int(tot) if field == 'sessoes' else (f"{tot:.1f}%" if field == 'margem' else round(float(tot), 2) if is_money else round(float(tot), 1))
+            else:
+                row['TOTAL'] = '–'
+            records.append(row)
+        return pd.DataFrame(records)
+
+    buf = _io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+        _build_sheet(dre_sem, 'semana', 'Sem ').to_excel(writer, sheet_name='DRE Semanal', index=False)
+        _build_sheet(dre_mes, 'mes_label', '').to_excel(writer, sheet_name='DRE Mensal', index=False)
+    buf.seek(0)
+    return buf.getvalue()
 
 
 def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct, anon, horas_dia=24):
@@ -1445,39 +1532,79 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 
     # ── DRE SEMANAL (transposta: indicadores=linhas, semanas=colunas) ────────────
     section("DRE — Demonstrativo de Resultado por Semana")
-    dre = build_dre_table(df, custo_kwh, custo_pct)
-    if len(dre) == 0:
-        st.caption("Dados insuficientes para gerar a DRE.")
-    else:
-        semana_cols = [f"Sem {int(w)}" for w in dre['semana']]
+    dre     = build_dre_table(df, custo_kwh, custo_pct)
+    dre_mes = build_dre_monthly(df, custo_kwh, custo_pct)
+
+    def _var_cell(val, tc=False):
+        if pd.isna(val):
+            cls = " class='tc'" if tc else ""
+            return f"<td{cls} style='color:#6B7280'>–</td>"
+        sign  = "+" if val >= 0 else ""
+        color = "#00C9A7" if val >= 0 else "#FF6B6B"
+        cls   = " class='tc'" if tc else ""
+        return f"<td{cls} style='color:{color}'>{sign}{val:.1f}%</td>"
+
+    def _render_dre_html(dre_df, period_col, period_prefix):
+        period_cols = [f"{period_prefix}{p}" for p in dre_df[period_col].astype(str)]
+        tot = dre_df  # alias for totals
 
         total_vals = {
-            'Sessões Pagas':     f"{int(dre['sessoes'].sum()):,}",
-            'kWh Entregues':     f"{dre['kwh'].sum():,.1f}",
-            'R$ Início Recarga': f"R$ {dre['r_inicio'].sum():,.2f}",
-            'R$ Energia (kWh)':  f"R$ {dre['r_kwh_rec'].sum():,.2f}",
-            'R$ Ociosidade':     f"R$ {dre['r_ocio'].sum():,.2f}",
-            'RECEITA TOTAL':     f"R$ {dre['receita_total'].sum():,.2f}",
-            '(-) Custo Energia': f"R$ {dre['custo_energia'].sum():,.2f}",
-            '(-) Custo Operac.': f"R$ {dre['custo_operacional'].sum():,.2f}",
-            '(=) LUCRO BRUTO':   f"R$ {dre['lucro_bruto'].sum():,.2f}",
-            'Margem (%)':        (f"{dre['lucro_bruto'].sum()/dre['receita_total'].sum()*100:.1f}%"
-                                  if dre['receita_total'].sum() else '–'),
+            'Sessões Pagas':     f"{int(tot['sessoes'].sum()):,}",
+            'kWh Entregues':     f"{tot['kwh'].sum():,.1f}",
+            'R$ Início Recarga': f"R$ {tot['r_inicio'].sum():,.2f}",
+            'R$ Energia (kWh)':  f"R$ {tot['r_kwh_rec'].sum():,.2f}",
+            'R$ Ociosidade':     f"R$ {tot['r_ocio'].sum():,.2f}",
+            'RECEITA TOTAL':     f"R$ {tot['receita_total'].sum():,.2f}",
+            '(-) Custo Energia': f"R$ {tot['custo_energia'].sum():,.2f}",
+            '(-) Custo Operac.': f"R$ {tot['custo_operacional'].sum():,.2f}",
+            '(=) LUCRO BRUTO':   f"R$ {tot['lucro_bruto'].sum():,.2f}",
+            'Margem (%)':        (f"{tot['lucro_bruto'].sum()/tot['receita_total'].sum()*100:.1f}%"
+                                  if tot['receita_total'].sum() else '–'),
         }
 
         indicadores = [
-            ('Sessões Pagas',     [f"{int(r['sessoes']):,}"           for _,r in dre.iterrows()], ''),
-            ('kWh Entregues',     [f"{r['kwh']:,.1f}"                  for _,r in dre.iterrows()], ''),
-            ('R$ Início Recarga', [f"R$ {r['r_inicio']:,.2f}"          for _,r in dre.iterrows()], ''),
-            ('R$ Energia (kWh)',  [f"R$ {r['r_kwh_rec']:,.2f}"         for _,r in dre.iterrows()], ''),
-            ('R$ Ociosidade',     [f"R$ {r['r_ocio']:,.2f}"            for _,r in dre.iterrows()], ''),
-            ('RECEITA TOTAL',     [f"R$ {r['receita_total']:,.2f}"     for _,r in dre.iterrows()], 'receita'),
-            ('(-) Custo Energia', [f"R$ {r['custo_energia']:,.2f}"     for _,r in dre.iterrows()], 'custo'),
-            ('(-) Custo Operac.', [f"R$ {r['custo_operacional']:,.2f}" for _,r in dre.iterrows()], 'custo'),
-            ('(=) LUCRO BRUTO',   [f"R$ {r['lucro_bruto']:,.2f}"       for _,r in dre.iterrows()], 'lucro'),
-            ('Margem (%)',        [f"{r['margem']:.1f}%"               for _,r in dre.iterrows()], 'lucro'),
+            ('Sessões Pagas',     [f"{int(r['sessoes']):,}"           for _,r in dre_df.iterrows()], ''),
+            ('kWh Entregues',     [f"{r['kwh']:,.1f}"                  for _,r in dre_df.iterrows()], ''),
+            ('R$ Início Recarga', [f"R$ {r['r_inicio']:,.2f}"          for _,r in dre_df.iterrows()], ''),
+            ('R$ Energia (kWh)',  [f"R$ {r['r_kwh_rec']:,.2f}"         for _,r in dre_df.iterrows()], ''),
+            ('R$ Ociosidade',     [f"R$ {r['r_ocio']:,.2f}"            for _,r in dre_df.iterrows()], ''),
+            ('RECEITA TOTAL',     [f"R$ {r['receita_total']:,.2f}"     for _,r in dre_df.iterrows()], 'receita'),
+            ('(-) Custo Energia', [f"R$ {r['custo_energia']:,.2f}"     for _,r in dre_df.iterrows()], 'custo'),
+            ('(-) Custo Operac.', [f"R$ {r['custo_operacional']:,.2f}" for _,r in dre_df.iterrows()], 'custo'),
+            ('(=) LUCRO BRUTO',   [f"R$ {r['lucro_bruto']:,.2f}"       for _,r in dre_df.iterrows()], 'lucro'),
+            ('Margem (%)',        [f"{r['margem']:.1f}%"               for _,r in dre_df.iterrows()], 'lucro'),
         ]
 
+        th_cols = "".join(f"<th>{c}</th>" for c in period_cols)
+        header  = f"<th>Indicador</th>{th_cols}<th class='tc'>TOTAL</th>"
+        rows_html = ""
+        for label, vals, row_type in indicadores:
+            row_cls = f" class='row-{row_type}'" if row_type else ""
+            cells   = f"<td>{label}</td>"
+            cells  += "".join(f"<td>{v}</td>" for v in vals)
+            cells  += f"<td class='tc'>{total_vals[label]}</td>"
+            rows_html += f"<tr{row_cls}>{cells}</tr>"
+
+        # Linhas de variação — cor por célula
+        var_receita_row = "<tr class='row-var'><td>▲ Var% Receita</td>"
+        var_lucro_row   = "<tr class='row-var'><td>▲ Var% Lucro</td>"
+        for _, r in dre_df.iterrows():
+            var_receita_row += _var_cell(r['var_receita'])
+            var_lucro_row   += _var_cell(r['var_lucro'])
+        var_receita_row += _var_cell(float('nan'), tc=True) + "</tr>"
+        var_lucro_row   += _var_cell(float('nan'), tc=True) + "</tr>"
+        rows_html += var_receita_row + var_lucro_row
+
+        return (
+            f'<div style="overflow-x:auto"><table class="dre-t">'
+            f'<thead><tr>{header}</tr></thead>'
+            f'<tbody>{rows_html}</tbody>'
+            f'</table></div>'
+        )
+
+    if len(dre) == 0:
+        st.caption("Dados insuficientes para gerar a DRE.")
+    else:
         st.markdown("""
         <style>
         .dre-t{width:100%;border-collapse:collapse;font-size:0.72rem;font-family:monospace;}
@@ -1488,34 +1615,34 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         .dre-t td{padding:5px 14px;border-bottom:1px solid #1A1C24;
                   color:#F0F2F8;text-align:right;white-space:nowrap;}
         .dre-t td:first-child{text-align:left;color:#9CA3AF;font-weight:500;}
-        .dre-t .tc{background:#13161D!important;font-weight:700;
-                   border-left:1px solid #2D3340;}
+        .dre-t .tc{background:#13161D!important;font-weight:700;border-left:1px solid #2D3340;}
         .dre-t .row-receita td{background:rgba(0,201,167,0.04);}
         .dre-t .row-receita td:first-child{color:#F0F2F8;font-weight:700;}
         .dre-t .row-lucro td{background:rgba(0,201,167,0.07);}
         .dre-t .row-lucro td:first-child,.dre-t .row-lucro .tc{color:#00C9A7;font-weight:700;}
         .dre-t .row-custo td:first-child,.dre-t .row-custo .tc{color:#FF6B6B;}
+        .dre-t .row-var td{background:rgba(255,255,255,0.02);font-style:italic;}
+        .dre-t .row-var td:first-child{color:#6B7280;}
         .dre-t tr:hover td{background:#13161D!important;}
         </style>
         """, unsafe_allow_html=True)
 
-        th_sem = "".join(f"<th>{s}</th>" for s in semana_cols)
-        header = f"<th>Indicador</th>{th_sem}<th class=\'tc\'>TOTAL</th>"
+        st.markdown("**Por Semana**", unsafe_allow_html=False)
+        st.markdown(_render_dre_html(dre, 'semana', 'Sem '), unsafe_allow_html=True)
 
-        rows_html = ""
-        for label, vals, row_type in indicadores:
-            row_cls = f" class=\'row-{row_type}\'" if row_type else ""
-            cells = f"<td>{label}</td>"
-            cells += "".join(f"<td>{v}</td>" for v in vals)
-            cells += f"<td class=\'tc\'>{total_vals[label]}</td>"
-            rows_html += f"<tr{row_cls}>{cells}</tr>"
+        if len(dre_mes) > 0:
+            st.markdown("<br>**Por Mês**", unsafe_allow_html=True)
+            st.markdown(_render_dre_html(dre_mes, 'mes_label', ''), unsafe_allow_html=True)
 
-        st.markdown(
-            f'<div style="overflow-x:auto"><table class="dre-t">'
-            f'<thead><tr>{header}</tr></thead>'
-            f'<tbody>{rows_html}</tbody>'
-            f'</table></div>',
-            unsafe_allow_html=True
+        # Botão Excel
+        st.markdown("<br>", unsafe_allow_html=True)
+        _xls = build_dre_excel(dre, dre_mes)
+        st.download_button(
+            label="⬇ Exportar DRE (.xlsx)",
+            data=_xls,
+            file_name=f"dre_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            width='content',
         )
     st.markdown("<br>", unsafe_allow_html=True)
 
