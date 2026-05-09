@@ -38,8 +38,8 @@ def _hash_pw(pw: str) -> str:
 
 _CREDENTIALS: dict[str, str] = {
     # usuário : sha256(senha)
-    "admin":     _hash_pw("Intelbr@as1!"),
-    "comercial": _hash_pw("Intelbras2026!"),
+    "admin":     "9531bb8a0886f2fe7f29f91fbadf09d0903aede2f2c00e9c12d95ba785c22298",
+    "comercial": "ea7d5b4094d4b7ca52588ab674da3ef3fb6d78cc4394b2776d88d7f176761964",
 }
 
 # Usuários que não podem remover o anonimato dos datasets pré-definidos
@@ -928,21 +928,32 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
 
             story += section_hdr(f'DRE — DEMONSTRATIVO DE RESULTADO {_gran}')
 
-            _C_RED    = rl_colors.HexColor('#C0392B')
-            _C_LGREEN = rl_colors.HexColor('#D5F5ED')
-            _C_LRED   = rl_colors.HexColor('#FDECEA')
+            _C_RED      = rl_colors.HexColor('#C0392B')
+            _C_LGREEN   = rl_colors.HexColor('#D5F5ED')
+            _C_LRED     = rl_colors.HexColor('#FDECEA')
+            _C_LGREEN2  = rl_colors.HexColor('#EAF7F4')   # fundo suave para RECEITA BRUTA
+            _C_DKGREEN2 = rl_colors.HexColor('#059669')   # texto verde mais escuro
+            _C_GREY_COL = rl_colors.HexColor('#9CA3AF')   # texto neutro para desconto
+
+            _pdf_has_voucher = (
+                'desconto_voucher' in _dre.columns and _dre['desconto_voucher'].sum() > 0
+            )
             _dre_totals = {
-                'Sessões Pagas':     f"{int(_dre['sessoes'].sum()):,}",
-                'kWh Entregues':     f"{_dre['kwh'].sum():,.1f}",
-                'R$ Início Recarga': f"R$ {_dre['r_inicio'].sum():,.2f}",
-                'R$ Energia (kWh)':  f"R$ {_dre['r_kwh_rec'].sum():,.2f}",
-                'R$ Ociosidade':     f"R$ {_dre['r_ocio'].sum():,.2f}",
-                'RECEITA TOTAL':     f"R$ {_dre['receita_total'].sum():,.2f}",
-                '(-) Custo Energia': f"R$ {_dre['custo_energia'].sum():,.2f}",
-                '(-) Custo Operac.': f"R$ {_dre['custo_operacional'].sum():,.2f}",
-                '(=) LUCRO BRUTO':   f"R$ {_dre['lucro_bruto'].sum():,.2f}",
-                'Margem (%)':        (f"{_dre['lucro_bruto'].sum()/_dre['receita_total'].sum()*100:.1f}%"
-                                      if _dre['receita_total'].sum() else '–'),
+                'Sessões Pagas':        f"{int(_dre['sessoes'].sum()):,}",
+                'kWh Entregues':        f"{_dre['kwh'].sum():,.1f}",
+                'R$ Início Recarga':    f"R$ {_dre['r_inicio'].sum():,.2f}",
+                'R$ Energia (kWh)':     f"R$ {_dre['r_kwh_rec'].sum():,.2f}",
+                'R$ Ociosidade':        f"R$ {_dre['r_ocio'].sum():,.2f}",
+                '(−) Desconto Voucher': (f"(−) R$ {_dre['desconto_voucher'].sum():,.2f}"
+                                         if _pdf_has_voucher else '–'),
+                'RECEITA BRUTA':        (f"R$ {_dre['receita_bruta'].sum():,.2f}"
+                                         if _pdf_has_voucher else '–'),
+                'RECEITA TOTAL':        f"R$ {_dre['receita_total'].sum():,.2f}",
+                '(-) Custo Energia':    f"R$ {_dre['custo_energia'].sum():,.2f}",
+                '(-) Custo Operac.':    f"R$ {_dre['custo_operacional'].sum():,.2f}",
+                '(=) LUCRO BRUTO':      f"R$ {_dre['lucro_bruto'].sum():,.2f}",
+                'Margem (%)':           (f"{_dre['lucro_bruto'].sum()/_dre['receita_total'].sum()*100:.1f}%"
+                                         if _dre['receita_total'].sum() else '–'),
             }
             _dre_inds = [
                 ('Sessões Pagas',    [f"{int(r['sessoes']):,}"           for _,r in _dre.iterrows()]),
@@ -950,6 +961,15 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
                 ('R$ Início Recarga',[f"R$ {r['r_inicio']:,.2f}"          for _,r in _dre.iterrows()]),
                 ('R$ Energia (kWh)', [f"R$ {r['r_kwh_rec']:,.2f}"         for _,r in _dre.iterrows()]),
                 ('R$ Ociosidade',    [f"R$ {r['r_ocio']:,.2f}"            for _,r in _dre.iterrows()]),
+            ]
+            if _pdf_has_voucher:
+                _dre_inds += [
+                    ('(−) Desconto Voucher',
+                     [f"(−) R$ {r['desconto_voucher']:,.2f}" for _,r in _dre.iterrows()]),
+                    ('RECEITA BRUTA',
+                     [f"R$ {r['receita_bruta']:,.2f}"        for _,r in _dre.iterrows()]),
+                ]
+            _dre_inds += [
                 ('RECEITA TOTAL',    [f"R$ {r['receita_total']:,.2f}"     for _,r in _dre.iterrows()]),
                 ('(-) Custo Energia',[f"R$ {r['custo_energia']:,.2f}"     for _,r in _dre.iterrows()]),
                 ('(-) Custo Operac.',[f"R$ {r['custo_operacional']:,.2f}" for _,r in _dre.iterrows()]),
@@ -969,18 +989,37 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
                 ('ALIGN',(1,0),(-1,-1),'RIGHT'),
             ]
             for _i, (_lbl, _vals) in enumerate(_dre_inds):
-                _ri = _i + 1
-                _is_r = _lbl == 'RECEITA TOTAL'; _is_l = _lbl == '(=) LUCRO BRUTO'
-                _is_c = _lbl.startswith('(-)')  ; _is_m = _lbl == 'Margem (%)'
-                _lc = C_GREEN if (_is_l or _is_m) else (_C_RED if _is_c else C_BLACK)
-                _sl = S(7, bold=(_is_r or _is_l), color=_lc)
-                _sv = S(7, bold=(_is_r or _is_l), color=_lc, align=TA_RIGHT)
-                _row  = [Paragraph(_lbl, _sl)]
-                _row += [Paragraph(v, _sv) for v in _vals]
-                _row += [Paragraph(_dre_totals[_lbl], _sv)]
+                _ri    = _i + 1
+                _is_r  = _lbl == 'RECEITA TOTAL'
+                _is_l  = _lbl == '(=) LUCRO BRUTO'
+                _is_c  = _lbl.startswith('(-)')
+                _is_m  = _lbl == 'Margem (%)'
+                _is_b  = _lbl == 'RECEITA BRUTA'
+                _is_dv = _lbl == '(−) Desconto Voucher'
+                if _is_l or _is_m:
+                    _lc = C_GREEN
+                elif _is_b:
+                    _lc = _C_DKGREEN2
+                elif _is_dv:
+                    _lc = _C_GREY_COL
+                elif _is_c:
+                    _lc = _C_RED
+                else:
+                    _lc = C_BLACK
+                _bold = _is_r or _is_l or _is_b
+                # italic via inline markup para desconto voucher
+                _lbl_txt = f'<i>{_lbl}</i>' if _is_dv else _lbl
+                _val_fmt = lambda v: f'<i>{v}</i>' if _is_dv else v
+                _sl = S(7, bold=_bold, color=_lc)
+                _sv = S(7, bold=_bold, color=_lc, align=TA_RIGHT)
+                _row  = [Paragraph(_lbl_txt, _sl)]
+                _row += [Paragraph(_val_fmt(v), _sv) for v in _vals]
+                _row += [Paragraph(_val_fmt(_dre_totals[_lbl]), _sv)]
                 _trows_dre.append(_row)
                 if _is_r or _is_l or _is_m:
                     _style_dre.append(('BACKGROUND',(0,_ri),(-1,_ri),_C_LGREEN))
+                elif _is_b:
+                    _style_dre.append(('BACKGROUND',(0,_ri),(-1,_ri),_C_LGREEN2))
                 elif _is_c:
                     _style_dre.append(('BACKGROUND',(0,_ri),(-1,_ri),_C_LRED))
             _dre_tbl2 = Table(_trows_dre, colWidths=_cw_dre)
@@ -1135,6 +1174,96 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         ]))
         story.append(tw)
 
+        # ── VOUCHERS — LISTA DE USUÁRIOS ─────────────────────────────────────
+        _pv = df[df['paid']].copy()
+        for _vc in ['Receita(R$) por Início de Recarga','Receita(R$) por kWh','Energia(kWh)']:
+            if _vc not in _pv.columns: _pv[_vc] = 0
+            _pv[_vc] = pd.to_numeric(_pv[_vc], errors='coerce').fillna(0)
+        _pv['Receita(R$)'] = pd.to_numeric(_pv.get('Receita(R$)', 0), errors='coerce').fillna(0)
+        _pv['is_voucher']  = _voucher_mask(_pv)
+        _vdf = _pv[_pv['is_voucher']].copy()
+
+        if len(_vdf) > 0:
+            _vdf['bruta']    = (_vdf['Energia(kWh)'] * _vdf['Receita(R$) por kWh']
+                                + _vdf['Receita(R$) por Início de Recarga'])
+            _vdf['desconto'] = (_vdf['bruta'] - _vdf['Receita(R$)']).clip(lower=0)
+
+            def _vtype(row):
+                for _col in ['Pagamento(Tipo)', 'Origem']:
+                    if _col in row.index:
+                        _v = str(row.get(_col, ''))
+                        if 'voucher' in _v.lower():
+                            return _v
+                return 'Subsídio total'
+            _vdf['tipo_voucher'] = _vdf.apply(_vtype, axis=1)
+
+            _tag_col = next((c for c in ['Usuário(Tag)', 'Usuário', 'usuario']
+                             if c in _vdf.columns), None)
+
+            story.append(PageBreak())
+            story += section_hdr('VOUCHERS — DESCONTOS CONCEDIDOS')
+
+            story.append(kv_table([
+                ['Sessões com Voucher', f"{len(_vdf):,}",
+                 'Desconto Total Concedido', f"R$ {_vdf['desconto'].sum():,.2f}"],
+                ['Receita Bruta Hipotética', f"R$ {_vdf['bruta'].sum():,.2f}",
+                 'Receita Líquida (Voucher)', f"R$ {_vdf['Receita(R$)'].sum():,.2f}"],
+            ]))
+            story.append(Spacer(1, 8))
+
+            _C_RED_V = rl_colors.HexColor('#C0392B')
+            if _tag_col:
+                _grp = (_vdf.groupby([_tag_col, 'tipo_voucher'])
+                        .agg(sessoes=('desconto','count'), kwh=('Energia(kWh)','sum'),
+                             bruta=('bruta','sum'), desconto=('desconto','sum'))
+                        .reset_index()
+                        .sort_values('desconto', ascending=False))
+                _v_hdr = [Paragraph(h, S(7, bold=True, color=C_GREY))
+                          for h in ['Usuário (Voucher)', 'Sessões', 'kWh', 'Rec. Bruta', 'Desconto']]
+                _v_rows = [_v_hdr]
+                for _, _r in _grp.iterrows():
+                    _user_label = (f"{str(_r[_tag_col])[:26]}\n"
+                                   f"({str(_r['tipo_voucher'])[:30]})")
+                    _v_rows.append([
+                        Paragraph(_user_label, S(7)),
+                        Paragraph(f"{int(_r['sessoes']):,}", S(7)),
+                        Paragraph(f"{_r['kwh']:,.1f}", S(7)),
+                        Paragraph(f"R$ {_r['bruta']:,.2f}", S(7)),
+                        Paragraph(f"R$ {_r['desconto']:,.2f}", S(7, bold=True, color=_C_RED_V)),
+                    ])
+                _v_tbl = Table(_v_rows, colWidths=[6.0*cm, 1.8*cm, 1.8*cm, 3.8*cm, 4.0*cm])
+            else:
+                _grp = (_vdf.groupby('tipo_voucher')
+                        .agg(sessoes=('desconto','count'), kwh=('Energia(kWh)','sum'),
+                             bruta=('bruta','sum'), desconto=('desconto','sum'))
+                        .reset_index()
+                        .sort_values('desconto', ascending=False))
+                _v_hdr = [Paragraph(h, S(7, bold=True, color=C_GREY))
+                          for h in ['Voucher', 'Sessões', 'kWh', 'Rec. Bruta', 'Desconto']]
+                _v_rows = [_v_hdr]
+                for _, _r in _grp.iterrows():
+                    _v_rows.append([
+                        Paragraph(str(_r['tipo_voucher'])[:40], S(7)),
+                        Paragraph(f"{int(_r['sessoes']):,}", S(7)),
+                        Paragraph(f"{_r['kwh']:,.1f}", S(7)),
+                        Paragraph(f"R$ {_r['bruta']:,.2f}", S(7)),
+                        Paragraph(f"R$ {_r['desconto']:,.2f}", S(7, bold=True, color=_C_RED_V)),
+                    ])
+                _v_tbl = Table(_v_rows, colWidths=[6.4*cm, 2*cm, 2*cm, 3.6*cm, 3.4*cm])
+
+            _v_tbl.setStyle(TableStyle([
+                ('BACKGROUND',(0,0),(-1,0),C_HDR),
+                ('ROWBACKGROUNDS',(0,1),(-1,-1),[C_BG, C_WHITE]),
+                ('GRID',(0,0),(-1,-1),0.3,C_BORD),
+                ('TOPPADDING',(0,0),(-1,-1),4),
+                ('BOTTOMPADDING',(0,0),(-1,-1),4),
+                ('LEFTPADDING',(0,0),(-1,-1),6),
+                ('RIGHTPADDING',(0,0),(-1,-1),6),
+                ('ALIGN',(2,0),(-1,-1),'RIGHT'),
+            ]))
+            story.append(_v_tbl)
+            story.append(Spacer(1, 10))
+
         # ── RODAPÉ ────────────────────────────────────────────────────────────
         story.append(Spacer(1, 10))
         story.append(HRFlowable(width=W, thickness=0.5, color=C_BORD))
@@ -1282,16 +1411,69 @@ def fig_revenue_sources_bar(df, color):
     fig.update_yaxes(tickprefix='R$ ', tickformat=',.0f', gridcolor='#1E2330', linecolor='#1E2330')
     return fig
 
+def _inspect_voucher_cols(df: pd.DataFrame) -> None:
+    """Imprime no terminal valores únicos das colunas usadas para detectar voucher."""
+    print("\n─── Inspeção voucher ───────────────────────────────────────────")
+    for col in ['Usuário(Tag)', 'Origem', 'Pagamento(Tipo)']:
+        if col in df.columns:
+            vals = sorted(str(v) for v in df[col].dropna().unique()[:50])
+            print(f"  {col}: {vals}")
+        else:
+            print(f"  {col}: [coluna não encontrada]")
+    print("────────────────────────────────────────────────────────────────\n")
+
+
+def _voucher_mask(df: pd.DataFrame) -> pd.Series:
+    """Máscara booleana de sessões identificadas como voucher.
+
+    Critérios (OR):
+    - 'Pagamento(Tipo)' ou 'Origem' contém 'voucher' (case-insensitive)
+    - kWh entregue > 0 mas Receita(R$) == 0 (subsídio total)
+    """
+    mask = pd.Series(False, index=df.index)
+    for col in ['Pagamento(Tipo)', 'Origem']:
+        if col in df.columns:
+            mask |= df[col].astype(str).str.contains('voucher', case=False, na=False)
+    if 'Energia(kWh)' in df.columns and 'Receita(R$)' in df.columns:
+        kwh     = pd.to_numeric(df['Energia(kWh)'], errors='coerce').fillna(0)
+        receita = pd.to_numeric(df['Receita(R$)'],  errors='coerce').fillna(0)
+        mask   |= (kwh > 0) & (receita == 0)
+    return mask
+
+
 def build_dre_table(df, custo_kwh, custo_pct):
     """Monta o DataFrame da DRE semanal."""
+    # Imprime colunas de voucher no terminal uma vez por sessão
+    if not st.session_state.get('_voucher_inspected'):
+        _inspect_voucher_cols(df)
+        st.session_state['_voucher_inspected'] = True
+
     paid = df[df['paid']].copy()
     for c in ['Receita(R$) por Início de Recarga','Receita(R$) por kWh','Valor Ociosidade','Energia(kWh)']:
         if c not in paid.columns: paid[c] = 0
         paid[c] = pd.to_numeric(paid[c], errors='coerce').fillna(0)
+    if 'Receita(R$)' in paid.columns:
+        paid['Receita(R$)'] = pd.to_numeric(paid['Receita(R$)'], errors='coerce').fillna(0)
+    else:
+        paid['Receita(R$)'] = 0.0
+
     paid['r_inicio'] = paid['Receita(R$) por Início de Recarga']
     paid['r_kwh']    = paid['Energia(kWh)'] * paid['Receita(R$) por kWh']
     paid['r_ocio']   = paid['Valor Ociosidade']
     paid['semana']   = paid['data_inicio'].dt.isocalendar().week
+
+    # Voucher: receita bruta hipotética e desconto
+    paid['is_voucher']      = _voucher_mask(paid)
+    paid['bruta_sessao']    = np.where(
+        paid['is_voucher'],
+        paid['Energia(kWh)'] * paid['Receita(R$) por kWh'] + paid['Receita(R$) por Início de Recarga'],
+        paid['Receita(R$)'],   # sem voucher: bruta = líquida
+    )
+    paid['desconto_sessao'] = np.where(
+        paid['is_voucher'],
+        (paid['bruta_sessao'] - paid['Receita(R$)']).clip(lower=0),
+        0.0,
+    )
 
     weekly = paid.groupby('semana').agg(
         r_inicio=('r_inicio','sum'),
@@ -1300,6 +1482,8 @@ def build_dre_table(df, custo_kwh, custo_pct):
         sessoes=('Receita(R$)','count'),
         kwh=('Energia(kWh)','sum'),
         receita=('Receita(R$)','sum'),
+        receita_bruta=('bruta_sessao','sum'),
+        desconto_voucher=('desconto_sessao','sum'),
     ).reset_index()
 
     weekly['receita_total'] = weekly['r_inicio'] + weekly['r_kwh_rec'] + weekly['r_ocio']
@@ -1329,15 +1513,32 @@ def _dre_agg(paid, custo_kwh, custo_pct):
 
 
 def _dre_paid_base(df):
-    """Extrai e normaliza as colunas de receita das sessões pagas."""
+    """Extrai e normaliza as colunas de receita das sessões pagas.
+    Inclui colunas de voucher (bruta_sessao, desconto_sessao) para todas as granularidades.
+    """
     paid = df[df['paid']].copy()
     for col in ['Receita(R$) por Início de Recarga','Receita(R$) por kWh',
                 'Valor Ociosidade','Energia(kWh)']:
         if col not in paid.columns: paid[col] = 0
         paid[col] = pd.to_numeric(paid[col], errors='coerce').fillna(0)
+    if 'Receita(R$)' in paid.columns:
+        paid['Receita(R$)'] = pd.to_numeric(paid['Receita(R$)'], errors='coerce').fillna(0)
+    else:
+        paid['Receita(R$)'] = 0.0
     paid['r_inicio'] = paid['Receita(R$) por Início de Recarga']
     paid['r_kwh']    = paid['Energia(kWh)'] * paid['Receita(R$) por kWh']
     paid['r_ocio']   = paid['Valor Ociosidade']
+    paid['is_voucher']      = _voucher_mask(paid)
+    paid['bruta_sessao']    = np.where(
+        paid['is_voucher'],
+        paid['Energia(kWh)'] * paid['Receita(R$) por kWh'] + paid['Receita(R$) por Início de Recarga'],
+        paid['Receita(R$)'],
+    )
+    paid['desconto_sessao'] = np.where(
+        paid['is_voucher'],
+        (paid['bruta_sessao'] - paid['Receita(R$)']).clip(lower=0),
+        0.0,
+    )
     return paid
 
 
@@ -1349,6 +1550,8 @@ def build_dre_monthly(df, custo_kwh, custo_pct):
         r_inicio=('r_inicio','sum'), r_kwh_rec=('r_kwh','sum'),
         r_ocio=('r_ocio','sum'), sessoes=('Receita(R$)','count'),
         kwh=('Energia(kWh)','sum'), receita=('Receita(R$)','sum'),
+        receita_bruta=('bruta_sessao','sum'),
+        desconto_voucher=('desconto_sessao','sum'),
     ).reset_index()
     g = _dre_agg(g, custo_kwh, custo_pct)
     g = g.sort_values('periodo').reset_index(drop=True)
@@ -1366,6 +1569,8 @@ def build_dre_quarterly(df, custo_kwh, custo_pct):
         r_inicio=('r_inicio','sum'), r_kwh_rec=('r_kwh','sum'),
         r_ocio=('r_ocio','sum'), sessoes=('Receita(R$)','count'),
         kwh=('Energia(kWh)','sum'), receita=('Receita(R$)','sum'),
+        receita_bruta=('bruta_sessao','sum'),
+        desconto_voucher=('desconto_sessao','sum'),
     ).reset_index()
     g = _dre_agg(g, custo_kwh, custo_pct)
     g = g.sort_values('periodo').reset_index(drop=True)
@@ -1629,6 +1834,9 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     .dre-t .row-custo td:first-child,.dre-t .row-custo .tc{{color:#FF6B6B;}}
     .dre-t .row-var td{{background:rgba(168,85,247,0.04);font-size:0.68rem;}}
     .dre-t .row-var td:first-child{{color:{C['text_muted']};font-style:italic;}}
+    .dre-t .row-desconto td:first-child{{color:#9CA3AF;font-style:italic;}}
+    .dre-t .row-bruta-hipo td{{background:rgba(0,201,167,0.025);}}
+    .dre-t .row-bruta-hipo td:first-child{{color:#34D399;font-weight:700;}}
     .dre-t tr:hover td{{background:{C['dre_hover']}!important;}}
     </style>
     """, unsafe_allow_html=True)
@@ -1636,19 +1844,23 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     if len(dre) == 0:
         st.caption("Dados insuficientes para gerar a DRE.")
     else:
-        semana_cols = [f"Sem {int(w)}" for w in dre['semana']]
+        semana_cols  = [f"Sem {int(w)}" for w in dre['semana']]
+        _has_voucher = dre['desconto_voucher'].sum() > 0
+
         total_sem = {
-            'Sessões Pagas':     f"{int(dre['sessoes'].sum()):,}",
-            'kWh Entregues':     f"{dre['kwh'].sum():,.1f}",
-            'R$ Início Recarga': f"R$ {dre['r_inicio'].sum():,.2f}",
-            'R$ Energia (kWh)':  f"R$ {dre['r_kwh_rec'].sum():,.2f}",
-            'R$ Ociosidade':     f"R$ {dre['r_ocio'].sum():,.2f}",
-            'RECEITA TOTAL':     f"R$ {dre['receita_total'].sum():,.2f}",
-            '(-) Custo Energia': f"R$ {dre['custo_energia'].sum():,.2f}",
-            '(-) Custo Operac.': f"R$ {dre['custo_operacional'].sum():,.2f}",
-            '(=) LUCRO BRUTO':   f"R$ {dre['lucro_bruto'].sum():,.2f}",
-            'Margem (%)':        (f"{dre['lucro_bruto'].sum()/dre['receita_total'].sum()*100:.1f}%"
-                                  if dre['receita_total'].sum() else '–'),
+            'Sessões Pagas':        f"{int(dre['sessoes'].sum()):,}",
+            'kWh Entregues':        f"{dre['kwh'].sum():,.1f}",
+            'R$ Início Recarga':    f"R$ {dre['r_inicio'].sum():,.2f}",
+            'R$ Energia (kWh)':     f"R$ {dre['r_kwh_rec'].sum():,.2f}",
+            'R$ Ociosidade':        f"R$ {dre['r_ocio'].sum():,.2f}",
+            '(−) Desconto Voucher': f"(−) R$ {dre['desconto_voucher'].sum():,.2f}",
+            'RECEITA BRUTA':        f"R$ {dre['receita_bruta'].sum():,.2f}",
+            'RECEITA TOTAL':        f"R$ {dre['receita_total'].sum():,.2f}",
+            '(-) Custo Energia':    f"R$ {dre['custo_energia'].sum():,.2f}",
+            '(-) Custo Operac.':    f"R$ {dre['custo_operacional'].sum():,.2f}",
+            '(=) LUCRO BRUTO':      f"R$ {dre['lucro_bruto'].sum():,.2f}",
+            'Margem (%)':           (f"{dre['lucro_bruto'].sum()/dre['receita_total'].sum()*100:.1f}%"
+                                     if dre['receita_total'].sum() else '–'),
         }
         ind_sem = [
             ('Sessões Pagas',     [f"{int(r['sessoes']):,}"           for _,r in dre.iterrows()], ''),
@@ -1656,6 +1868,13 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
             ('R$ Início Recarga', [f"R$ {r['r_inicio']:,.2f}"          for _,r in dre.iterrows()], ''),
             ('R$ Energia (kWh)',  [f"R$ {r['r_kwh_rec']:,.2f}"         for _,r in dre.iterrows()], ''),
             ('R$ Ociosidade',     [f"R$ {r['r_ocio']:,.2f}"            for _,r in dre.iterrows()], ''),
+        ]
+        if _has_voucher:
+            ind_sem += [
+                ('(−) Desconto Voucher', [f"(−) R$ {r['desconto_voucher']:,.2f}" for _,r in dre.iterrows()], 'desconto'),
+                ('RECEITA BRUTA',        [f"R$ {r['receita_bruta']:,.2f}"         for _,r in dre.iterrows()], 'bruta-hipo'),
+            ]
+        ind_sem += [
             ('RECEITA TOTAL',     [f"R$ {r['receita_total']:,.2f}"     for _,r in dre.iterrows()], 'receita'),
             ('(-) Custo Energia', [f"R$ {r['custo_energia']:,.2f}"     for _,r in dre.iterrows()], 'custo'),
             ('(-) Custo Operac.', [f"R$ {r['custo_operacional']:,.2f}" for _,r in dre.iterrows()], 'custo'),
@@ -1668,19 +1887,22 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     if len(dre_mes) > 1:
         st.markdown("<br>", unsafe_allow_html=True)
         section("DRE — Demonstrativo de Resultado por Mês")
-        mes_cols  = dre_mes['label'].tolist()
+        mes_cols         = dre_mes['label'].tolist()
+        _has_voucher_mes = dre_mes['desconto_voucher'].sum() > 0
         total_mes = {
-            'Sessões Pagas':     f"{int(dre_mes['sessoes'].sum()):,}",
-            'kWh Entregues':     f"{dre_mes['kwh'].sum():,.1f}",
-            'R$ Início Recarga': f"R$ {dre_mes['r_inicio'].sum():,.2f}",
-            'R$ Energia (kWh)':  f"R$ {dre_mes['r_kwh_rec'].sum():,.2f}",
-            'R$ Ociosidade':     f"R$ {dre_mes['r_ocio'].sum():,.2f}",
-            'RECEITA TOTAL':     f"R$ {dre_mes['receita_total'].sum():,.2f}",
-            '(-) Custo Energia': f"R$ {dre_mes['custo_energia'].sum():,.2f}",
-            '(-) Custo Operac.': f"R$ {dre_mes['custo_operacional'].sum():,.2f}",
-            '(=) LUCRO BRUTO':   f"R$ {dre_mes['lucro_bruto'].sum():,.2f}",
-            'Margem (%)':        (f"{dre_mes['lucro_bruto'].sum()/dre_mes['receita_total'].sum()*100:.1f}%"
-                                  if dre_mes['receita_total'].sum() else '–'),
+            'Sessões Pagas':        f"{int(dre_mes['sessoes'].sum()):,}",
+            'kWh Entregues':        f"{dre_mes['kwh'].sum():,.1f}",
+            'R$ Início Recarga':    f"R$ {dre_mes['r_inicio'].sum():,.2f}",
+            'R$ Energia (kWh)':     f"R$ {dre_mes['r_kwh_rec'].sum():,.2f}",
+            'R$ Ociosidade':        f"R$ {dre_mes['r_ocio'].sum():,.2f}",
+            '(−) Desconto Voucher': f"(−) R$ {dre_mes['desconto_voucher'].sum():,.2f}",
+            'RECEITA BRUTA':        f"R$ {dre_mes['receita_bruta'].sum():,.2f}",
+            'RECEITA TOTAL':        f"R$ {dre_mes['receita_total'].sum():,.2f}",
+            '(-) Custo Energia':    f"R$ {dre_mes['custo_energia'].sum():,.2f}",
+            '(-) Custo Operac.':    f"R$ {dre_mes['custo_operacional'].sum():,.2f}",
+            '(=) LUCRO BRUTO':      f"R$ {dre_mes['lucro_bruto'].sum():,.2f}",
+            'Margem (%)':           (f"{dre_mes['lucro_bruto'].sum()/dre_mes['receita_total'].sum()*100:.1f}%"
+                                     if dre_mes['receita_total'].sum() else '–'),
         }
         ind_mes = [
             ('Sessões Pagas',     [f"{int(r['sessoes']):,}"           for _,r in dre_mes.iterrows()], ''),
@@ -1688,6 +1910,13 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
             ('R$ Início Recarga', [f"R$ {r['r_inicio']:,.2f}"          for _,r in dre_mes.iterrows()], ''),
             ('R$ Energia (kWh)',  [f"R$ {r['r_kwh_rec']:,.2f}"         for _,r in dre_mes.iterrows()], ''),
             ('R$ Ociosidade',     [f"R$ {r['r_ocio']:,.2f}"            for _,r in dre_mes.iterrows()], ''),
+        ]
+        if _has_voucher_mes:
+            ind_mes += [
+                ('(−) Desconto Voucher', [f"(−) R$ {r['desconto_voucher']:,.2f}" for _,r in dre_mes.iterrows()], 'desconto'),
+                ('RECEITA BRUTA',        [f"R$ {r['receita_bruta']:,.2f}"         for _,r in dre_mes.iterrows()], 'bruta-hipo'),
+            ]
+        ind_mes += [
             ('RECEITA TOTAL',     [f"R$ {r['receita_total']:,.2f}"     for _,r in dre_mes.iterrows()], 'receita'),
             ('(-) Custo Energia', [f"R$ {r['custo_energia']:,.2f}"     for _,r in dre_mes.iterrows()], 'custo'),
             ('(-) Custo Operac.', [f"R$ {r['custo_operacional']:,.2f}" for _,r in dre_mes.iterrows()], 'custo'),
@@ -1745,9 +1974,11 @@ if not st.session_state.authenticated:
             '</div>',
             unsafe_allow_html=True,
         )
-        user = st.text_input("Usuário", key="login_user", placeholder="usuário")
-        pw   = st.text_input("Senha",   key="login_pw",   placeholder="senha", type="password")
-        if st.button("Entrar", type="primary", use_container_width=True):
+        with st.form("login_form", border=False):
+            user = st.text_input("Usuário", placeholder="usuário")
+            pw   = st.text_input("Senha",   placeholder="senha", type="password")
+            submitted = st.form_submit_button("Entrar", type="primary", use_container_width=True)
+        if submitted:
             if user in _CREDENTIALS and _hash_pw(pw) == _CREDENTIALS[user]:
                 st.session_state.authenticated = True
                 st.session_state.logged_user   = user
@@ -1831,6 +2062,9 @@ with st.sidebar:
                                     help="Horário de fechamento (24 = meia-noite)")
     horas_dia = max(1, hora_fim - hora_inicio)
     st.markdown(f'<div style="font-size:0.75rem;color:#00C9A7;margin-top:2px">&#9201; {horas_dia}h disponíveis/dia</div>', unsafe_allow_html=True)
+
+    # Slot reservado para os FILTROS — será preenchido após o carregamento dos dados
+    _filtros_slot = st.empty()
 
     st.markdown("---")
     _logged_user = st.session_state.get('logged_user', 'admin')
@@ -1923,7 +2157,7 @@ _date_min_all = df_all['data'].min()
 _date_max_all = df_all['data'].max()
 _selected_dates = (_date_min_all, _date_max_all)
 
-with st.sidebar:
+with _filtros_slot.container():
     st.markdown("---")
     st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">FILTROS</div>',
                 unsafe_allow_html=True)
