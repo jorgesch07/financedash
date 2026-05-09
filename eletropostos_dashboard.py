@@ -8,6 +8,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import io
 import os
+import hashlib
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -21,6 +22,28 @@ st.set_page_config(
 COLORS = ["#00C9A7","#0088FE","#FF6B6B","#FFD93D","#A855F7","#F97316","#06B6D4","#84CC16"]
 DARK_BG = "#0D0F14"; CARD_BG = "#13161D"; CARD_BORDER = "#1E2330"
 TEXT_PRIMARY = "#F0F2F8"; TEXT_MUTED = "#6B7280"; ACCENT = "#00C9A7"
+
+C = dict(
+    bg=DARK_BG, card_bg=CARD_BG, card_border=CARD_BORDER,
+    sidebar_bg="#0A0C10", text_primary=TEXT_PRIMARY, text_muted=TEXT_MUTED,
+    grid="#1E2330", row_alt="#181B23", dre_tc=DARK_BG, dre_hdr=CARD_BORDER,
+    dre_td_first="#9CA3AF", dre_border="#2D3340", dre_hover=CARD_BG,
+)
+
+# ─── CREDENCIAIS ──────────────────────────────────────────────────────────────
+# Para alterar: substitua o valor pelo hash SHA-256 da nova senha.
+# Gere com: python -c "import hashlib; print(hashlib.sha256(b'suasenha').hexdigest())"
+def _hash_pw(pw: str) -> str:
+    return hashlib.sha256(pw.encode()).hexdigest()
+
+_CREDENTIALS: dict[str, str] = {
+    # usuário : sha256(senha)
+    "admin":     _hash_pw("Intelbr@as1!"),
+    "comercial": _hash_pw("Intelbras2026!"),
+}
+
+# Usuários que não podem remover o anonimato dos datasets pré-definidos
+_RESTRICTED_USERS = {"comercial"}
 
 PLOTLY_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -51,6 +74,8 @@ hr { border-color:#1E2330 !important; }
 [data-testid="stDataFrame"] { border:1px solid #1E2330; border-radius:8px; }
 #sf-toggle { position:fixed; top:14px; left:14px; z-index:999999; width:36px; height:36px; background:#13161D; border:1px solid #00C9A7; border-radius:8px; color:#00C9A7; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 16px rgba(0,201,167,0.2); }
 #sf-toggle:hover { background:#1E2330; }
+[data-testid="InputInstructions"] { font-size:0 !important; max-width:calc(100% - 44px); }
+[data-testid="InputInstructions"]::after { content:"Pressione Enter"; font-size:0.72rem; color:#6B7280; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -149,6 +174,35 @@ components.html("""
     setTimeout(inject, 500);
     setTimeout(inject, 1500);
     setTimeout(updateBtn, 2000);
+
+    // Substitui "Select all" → "Selecionar todos" nos dropdowns de multiselect
+    // ("Pressione Enter" é tratado via CSS para não conflitar com o React)
+    var selectAllPending = false;
+    function applySelectAll() {
+        var pd = window.parent.document;
+        pd.querySelectorAll('[role="option"]').forEach(function(el) {
+            if (el.textContent.trim() === 'Select all') {
+                var walker = pd.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+                var node;
+                while ((node = walker.nextNode())) {
+                    if (node.textContent.trim() === 'Select all') {
+                        node.textContent = 'Selecionar todos';
+                    }
+                }
+            }
+        });
+        selectAllPending = false;
+    }
+    function scheduleSelectAll() {
+        if (!selectAllPending) {
+            selectAllPending = true;
+            window.parent.requestAnimationFrame(applySelectAll);
+        }
+    }
+    var selectAllObs = new MutationObserver(scheduleSelectAll);
+    if (window.parent.document.body) {
+        selectAllObs.observe(window.parent.document.body, { childList: true, subtree: true });
+    }
 })();
 </script>
 """, height=0)
@@ -849,17 +903,31 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story.append(Spacer(1, 10))
         story.append(PageBreak())
 
-        # ── DRE SEMANAL (logo após análise de custos) ─────────────────────────
-        story += section_hdr('DRE — DEMONSTRATIVO DE RESULTADO POR SEMANA')
-        _dre = build_dre_table(df, custo_kwh, custo_pct)
-        if len(_dre) == 0:
+        # ── DRE ADAPTATIVA (semana → mês → trimestre conforme espaço) ────────────
+        _dre_sem = build_dre_table(df, custo_kwh, custo_pct)
+        if len(_dre_sem) == 0:
             story.append(Paragraph('Dados insuficientes para gerar a DRE.', S(8, color=C_GREY)))
         else:
-            _sem_cols = [f"Sem {int(w)}" for w in _dre['semana']]
-            _n_sem = len(_sem_cols)
-            _ind_w = 4.0*cm; _tot_w = 2.6*cm
-            _sem_w = max(1.6*cm, (W - _ind_w - _tot_w) / max(_n_sem, 1))
-            _cw_dre = [_ind_w] + [_sem_w]*_n_sem + [_tot_w]
+            _ind_w = 4.0*cm; _tot_w = 2.6*cm; _MIN_COL = 1.6*cm
+            _avail  = W - _ind_w - _tot_w
+
+            def _choose_dre():
+                if len(_dre_sem) * _MIN_COL <= _avail:
+                    cols = [f"Sem {int(w)}" for w in _dre_sem['semana']]
+                    return _dre_sem, cols, 'POR SEMANA'
+                _dre_mes = build_dre_monthly(df, custo_kwh, custo_pct)
+                if len(_dre_mes) * _MIN_COL <= _avail:
+                    return _dre_mes, _dre_mes['label'].tolist(), 'POR MÊS'
+                _dre_tri = build_dre_quarterly(df, custo_kwh, custo_pct)
+                return _dre_tri, _dre_tri['label'].tolist(), 'POR TRIMESTRE'
+
+            _dre, _per_cols, _gran = _choose_dre()
+            _n    = len(_per_cols)
+            _cw   = min(_avail / max(_n, 1), _avail)
+            _cw_dre = [_ind_w] + [_cw]*_n + [_tot_w]
+
+            story += section_hdr(f'DRE — DEMONSTRATIVO DE RESULTADO {_gran}')
+
             _C_RED    = rl_colors.HexColor('#C0392B')
             _C_LGREEN = rl_colors.HexColor('#D5F5ED')
             _C_LRED   = rl_colors.HexColor('#FDECEA')
@@ -888,8 +956,8 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
                 ('(=) LUCRO BRUTO',  [f"R$ {r['lucro_bruto']:,.2f}"       for _,r in _dre.iterrows()]),
                 ('Margem (%)',       [f"{r['margem']:.1f}%"               for _,r in _dre.iterrows()]),
             ]
-            _hdr_dre = [Paragraph('Indicador', S(7, bold=True, color=C_GREY))]
-            _hdr_dre += [Paragraph(s, S(7, bold=True, color=C_GREY, align=TA_RIGHT)) for s in _sem_cols]
+            _hdr_dre  = [Paragraph('Indicador', S(7, bold=True, color=C_GREY))]
+            _hdr_dre += [Paragraph(s, S(7, bold=True, color=C_GREY, align=TA_RIGHT)) for s in _per_cols]
             _hdr_dre += [Paragraph('TOTAL', S(7, bold=True, color=C_GREY, align=TA_RIGHT))]
             _trows_dre = [_hdr_dre]
             _style_dre = [
@@ -907,7 +975,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
                 _lc = C_GREEN if (_is_l or _is_m) else (_C_RED if _is_c else C_BLACK)
                 _sl = S(7, bold=(_is_r or _is_l), color=_lc)
                 _sv = S(7, bold=(_is_r or _is_l), color=_lc, align=TA_RIGHT)
-                _row = [Paragraph(_lbl, _sl)]
+                _row  = [Paragraph(_lbl, _sl)]
                 _row += [Paragraph(v, _sv) for v in _vals]
                 _row += [Paragraph(_dre_totals[_lbl], _sv)]
                 _trows_dre.append(_row)
@@ -931,7 +999,7 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story.append(chart(fig_rcl, h_cm=6))
         story.append(Spacer(1, 10))
 
-        #story.append(PageBreak())
+        story.append(PageBreak())
         story += section_hdr('DISTRIBUIÇÃO HORÁRIA DE SESSÕES')
         story.append(chart(fig_hourly(dfs), h_cm=6))
         story.append(Spacer(1, 10))
@@ -978,11 +1046,12 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
             story.append(chart(fig_top_stations(df, top_n=n_st), h_cm=h_st))
             story.append(Spacer(1, 10))
 
+            story.append(PageBreak())
             story += section_hdr('TOP 15 ESTAÇÕES POR SESSÕES/DIA')
             story.append(chart(fig_top_stations_by_sessions(df, top_n=n_st), h_cm=h_st))
             story.append(Spacer(1, 10))
 
-            story.append(PageBreak())
+            #story.append(PageBreak())
             story += section_hdr('TAXA DE OCUPAÇÃO — TOP 15 CARREGADORES')
             story.append(chart(fig_occupancy(df, top_n=n_st, horas_dia=horas_dia), h_cm=h_st))
             story.append(Spacer(1, 10))
@@ -995,13 +1064,13 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
         story.append(chart(fig_revenue_sources(df, color), h_cm=5.5))
         story.append(Spacer(1, 10))
 
-        story.append(PageBreak())
+        #story.append(PageBreak())
         story += section_hdr('RECEITA POR ORIGEM — EVOLUÇÃO SEMANAL')
         story.append(chart(fig_revenue_sources_bar(df, color), h_cm=5))
         story.append(Spacer(1, 10))
 
         # ── TABELAS ───────────────────────────────────────────────────────────
-        #story.append(PageBreak())
+        story.append(PageBreak())
 
         col_est = 'Estação' if 'Estação' in df.columns else 'Estacao'
         if col_est in df.columns:
@@ -1246,89 +1315,64 @@ def build_dre_table(df, custo_kwh, custo_pct):
     return weekly
 
 
-def build_dre_monthly(df, custo_kwh, custo_pct):
-    """Monta o DataFrame da DRE mensal com variação mês a mês."""
+def _dre_agg(paid, custo_kwh, custo_pct):
+    """Agrega colunas financeiras comuns a todas as granularidades de DRE."""
+    df = paid.copy()
+    df['receita_total']    = df['r_inicio'] + df['r_kwh_rec'] + df['r_ocio']
+    df['custo_energia']    = df['kwh'] * custo_kwh
+    df['custo_operacional']= df['receita_total'] * (custo_pct / 100)
+    df['custo_total']      = df['custo_energia'] + df['custo_operacional']
+    df['lucro_bruto']      = df['receita_total'] - df['custo_total']
+    df['margem']           = df.apply(
+        lambda r: r['lucro_bruto']/r['receita_total']*100 if r['receita_total'] else 0, axis=1)
+    return df
+
+
+def _dre_paid_base(df):
+    """Extrai e normaliza as colunas de receita das sessões pagas."""
     paid = df[df['paid']].copy()
-    for c in ['Receita(R$) por Início de Recarga','Receita(R$) por kWh','Valor Ociosidade','Energia(kgit Wh)']:
-        if c not in paid.columns: paid[c] = 0
-        paid[c] = pd.to_numeric(paid[c], errors='coerce').fillna(0)
+    for col in ['Receita(R$) por Início de Recarga','Receita(R$) por kWh',
+                'Valor Ociosidade','Energia(kWh)']:
+        if col not in paid.columns: paid[col] = 0
+        paid[col] = pd.to_numeric(paid[col], errors='coerce').fillna(0)
     paid['r_inicio'] = paid['Receita(R$) por Início de Recarga']
     paid['r_kwh']    = paid['Energia(kWh)'] * paid['Receita(R$) por kWh']
     paid['r_ocio']   = paid['Valor Ociosidade']
-    paid['mes']      = paid['data_inicio'].dt.to_period('M')
+    return paid
 
-    monthly = paid.groupby('mes').agg(
-        r_inicio=('r_inicio','sum'),
-        r_kwh_rec=('r_kwh','sum'),
-        r_ocio=('r_ocio','sum'),
-        sessoes=('Receita(R$)','count'),
-        kwh=('Energia(kWh)','sum'),
-        receita=('Receita(R$)','sum'),
+
+def build_dre_monthly(df, custo_kwh, custo_pct):
+    """DRE agrupada por mês. Coluna 'label' = 'Jan/25' etc."""
+    paid = _dre_paid_base(df)
+    paid['periodo'] = paid['data_inicio'].dt.to_period('M')
+    g = paid.groupby('periodo').agg(
+        r_inicio=('r_inicio','sum'), r_kwh_rec=('r_kwh','sum'),
+        r_ocio=('r_ocio','sum'), sessoes=('Receita(R$)','count'),
+        kwh=('Energia(kWh)','sum'), receita=('Receita(R$)','sum'),
     ).reset_index()
-
-    monthly['receita_total']    = monthly['r_inicio'] + monthly['r_kwh_rec'] + monthly['r_ocio']
-    monthly['custo_energia']    = monthly['kwh'] * custo_kwh
-    monthly['custo_operacional']= monthly['receita_total'] * (custo_pct / 100)
-    monthly['custo_total']      = monthly['custo_energia'] + monthly['custo_operacional']
-    monthly['lucro_bruto']      = monthly['receita_total'] - monthly['custo_total']
-    monthly['margem']           = monthly.apply(
-        lambda r: r['lucro_bruto']/r['receita_total']*100 if r['receita_total'] else 0, axis=1)
-    monthly['var_receita'] = monthly['receita_total'].pct_change() * 100
-    monthly['var_lucro']   = monthly['lucro_bruto'].pct_change() * 100
-    monthly['mes_label']   = monthly['mes'].dt.strftime('%b/%Y')
-    return monthly
+    g = _dre_agg(g, custo_kwh, custo_pct)
+    g = g.sort_values('periodo').reset_index(drop=True)
+    g['var_receita'] = g['receita_total'].pct_change() * 100
+    g['var_lucro']   = g['lucro_bruto'].pct_change() * 100
+    g['label'] = g['periodo'].dt.strftime('%b/%y')
+    return g
 
 
-def build_dre_excel(dre_sem, dre_mes):
-    """Gera bytes de Excel com DRE semanal e mensal em abas separadas."""
-    import io as _io
-
-    INDICADORES = [
-        ('Sessões Pagas',     'sessoes',          False),
-        ('kWh Entregues',     'kwh',              False),
-        ('R$ Início Recarga', 'r_inicio',         True),
-        ('R$ Energia (kWh)',  'r_kwh_rec',        True),
-        ('R$ Ociosidade',     'r_ocio',           True),
-        ('RECEITA TOTAL',     'receita_total',    True),
-        ('(-) Custo Energia', 'custo_energia',    True),
-        ('(-) Custo Operac.', 'custo_operacional',True),
-        ('(=) LUCRO BRUTO',   'lucro_bruto',      True),
-        ('Margem (%)',        'margem',           False),
-        ('Var% Receita',      'var_receita',      False),
-        ('Var% Lucro',        'var_lucro',        False),
-    ]
-
-    def _build_sheet(dre, period_col, period_prefix):
-        cols = [f"{period_prefix}{p}" for p in dre[period_col].astype(str)]
-        records = []
-        for label, field, is_money in INDICADORES:
-            row = {'Indicador': label}
-            for col, (_, r) in zip(cols, dre.iterrows()):
-                v = r[field]
-                if field in ('var_receita', 'var_lucro'):
-                    row[col] = f"{v:+.1f}%" if pd.notna(v) else '–'
-                elif field == 'margem':
-                    row[col] = f"{v:.1f}%"
-                elif field == 'sessoes':
-                    row[col] = int(v)
-                elif is_money:
-                    row[col] = round(float(v), 2)
-                else:
-                    row[col] = round(float(v), 1)
-            if field not in ('var_receita', 'var_lucro', 'margem'):
-                tot = dre[field].sum()
-                row['TOTAL'] = int(tot) if field == 'sessoes' else (f"{tot:.1f}%" if field == 'margem' else round(float(tot), 2) if is_money else round(float(tot), 1))
-            else:
-                row['TOTAL'] = '–'
-            records.append(row)
-        return pd.DataFrame(records)
-
-    buf = _io.BytesIO()
-    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
-        _build_sheet(dre_sem, 'semana', 'Sem ').to_excel(writer, sheet_name='DRE Semanal', index=False)
-        _build_sheet(dre_mes, 'mes_label', '').to_excel(writer, sheet_name='DRE Mensal', index=False)
-    buf.seek(0)
-    return buf.getvalue()
+def build_dre_quarterly(df, custo_kwh, custo_pct):
+    """DRE agrupada por trimestre. Coluna 'label' = 'T1/25' etc."""
+    paid = _dre_paid_base(df)
+    paid['periodo'] = paid['data_inicio'].dt.to_period('Q')
+    g = paid.groupby('periodo').agg(
+        r_inicio=('r_inicio','sum'), r_kwh_rec=('r_kwh','sum'),
+        r_ocio=('r_ocio','sum'), sessoes=('Receita(R$)','count'),
+        kwh=('Energia(kWh)','sum'), receita=('Receita(R$)','sum'),
+    ).reset_index()
+    g = _dre_agg(g, custo_kwh, custo_pct)
+    g = g.sort_values('periodo').reset_index(drop=True)
+    g['var_receita'] = g['receita_total'].pct_change() * 100
+    g['var_lucro']   = g['lucro_bruto'].pct_change() * 100
+    g['label'] = g['periodo'].apply(lambda p: f"T{p.quarter}/{str(p.year)[2:]}")
+    return g
 
 
 def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct, anon, horas_dia=24):
@@ -1536,66 +1580,29 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
     dre     = build_dre_table(df, custo_kwh, custo_pct)
     dre_mes = build_dre_monthly(df, custo_kwh, custo_pct)
 
-    def _var_cell(val, tc=False):
+    def _var_cell(val):
         if pd.isna(val):
-            cls = " class='tc'" if tc else ""
-            return f"<td{cls} style='color:#6B7280'>–</td>"
-        sign  = "+" if val >= 0 else ""
-        color = "#00C9A7" if val >= 0 else "#FF6B6B"
-        cls   = " class='tc'" if tc else ""
-        return f"<td{cls} style='color:{color}'>{sign}{val:.1f}%</td>"
+            return '–'
+        color = '#00C9A7' if val >= 0 else '#FF6B6B'
+        sign  = '+' if val >= 0 else ''
+        return f'<span style="color:{color}">{sign}{val:.1f}%</span>'
 
-    def _render_dre_html(dre_df, period_col, period_prefix):
-        period_cols = [f"{period_prefix}{p}" for p in dre_df[period_col].astype(str)]
-        tot = dre_df  # alias for totals
-
-        total_vals = {
-            'Sessões Pagas':     f"{int(tot['sessoes'].sum()):,}",
-            'kWh Entregues':     f"{tot['kwh'].sum():,.1f}",
-            'R$ Início Recarga': f"R$ {tot['r_inicio'].sum():,.2f}",
-            'R$ Energia (kWh)':  f"R$ {tot['r_kwh_rec'].sum():,.2f}",
-            'R$ Ociosidade':     f"R$ {tot['r_ocio'].sum():,.2f}",
-            'RECEITA TOTAL':     f"R$ {tot['receita_total'].sum():,.2f}",
-            '(-) Custo Energia': f"R$ {tot['custo_energia'].sum():,.2f}",
-            '(-) Custo Operac.': f"R$ {tot['custo_operacional'].sum():,.2f}",
-            '(=) LUCRO BRUTO':   f"R$ {tot['lucro_bruto'].sum():,.2f}",
-            'Margem (%)':        (f"{tot['lucro_bruto'].sum()/tot['receita_total'].sum()*100:.1f}%"
-                                  if tot['receita_total'].sum() else '–'),
-        }
-
-        indicadores = [
-            ('Sessões Pagas',     [f"{int(r['sessoes']):,}"           for _,r in dre_df.iterrows()], ''),
-            ('kWh Entregues',     [f"{r['kwh']:,.1f}"                  for _,r in dre_df.iterrows()], ''),
-            ('R$ Início Recarga', [f"R$ {r['r_inicio']:,.2f}"          for _,r in dre_df.iterrows()], ''),
-            ('R$ Energia (kWh)',  [f"R$ {r['r_kwh_rec']:,.2f}"         for _,r in dre_df.iterrows()], ''),
-            ('R$ Ociosidade',     [f"R$ {r['r_ocio']:,.2f}"            for _,r in dre_df.iterrows()], ''),
-            ('RECEITA TOTAL',     [f"R$ {r['receita_total']:,.2f}"     for _,r in dre_df.iterrows()], 'receita'),
-            ('(-) Custo Energia', [f"R$ {r['custo_energia']:,.2f}"     for _,r in dre_df.iterrows()], 'custo'),
-            ('(-) Custo Operac.', [f"R$ {r['custo_operacional']:,.2f}" for _,r in dre_df.iterrows()], 'custo'),
-            ('(=) LUCRO BRUTO',   [f"R$ {r['lucro_bruto']:,.2f}"       for _,r in dre_df.iterrows()], 'lucro'),
-            ('Margem (%)',        [f"{r['margem']:.1f}%"               for _,r in dre_df.iterrows()], 'lucro'),
-        ]
-
-        th_cols = "".join(f"<th>{c}</th>" for c in period_cols)
+    def _dre_html(data, period_cols, total_vals, indicadores_list):
+        th_cols = "".join(f"<th>{s}</th>" for s in period_cols)
         header  = f"<th>Indicador</th>{th_cols}<th class='tc'>TOTAL</th>"
         rows_html = ""
-        for label, vals, row_type in indicadores:
+        for label, vals, row_type in indicadores_list:
             row_cls = f" class='row-{row_type}'" if row_type else ""
             cells   = f"<td>{label}</td>"
             cells  += "".join(f"<td>{v}</td>" for v in vals)
             cells  += f"<td class='tc'>{total_vals[label]}</td>"
             rows_html += f"<tr{row_cls}>{cells}</tr>"
-
-        # Linhas de variação — cor por célula
-        var_receita_row = "<tr class='row-var'><td>▲ Var% Receita</td>"
-        var_lucro_row   = "<tr class='row-var'><td>▲ Var% Lucro</td>"
-        for _, r in dre_df.iterrows():
-            var_receita_row += _var_cell(r['var_receita'])
-            var_lucro_row   += _var_cell(r['var_lucro'])
-        var_receita_row += _var_cell(float('nan'), tc=True) + "</tr>"
-        var_lucro_row   += _var_cell(float('nan'), tc=True) + "</tr>"
-        rows_html += var_receita_row + var_lucro_row
-
+        var_rec = "".join(f"<td>{_var_cell(r['var_receita'])}</td>" for _,r in data.iterrows())
+        var_luc = "".join(f"<td>{_var_cell(r['var_lucro'])}</td>"   for _,r in data.iterrows())
+        rows_html += (
+            f"<tr class='row-var'><td>▲ Var% Receita</td>{var_rec}<td class='tc'>–</td></tr>"
+            f"<tr class='row-var'><td>▲ Var% Lucro</td>{var_luc}<td class='tc'>–</td></tr>"
+        )
         return (
             f'<div style="overflow-x:auto"><table class="dre-t">'
             f'<thead><tr>{header}</tr></thead>'
@@ -1603,48 +1610,92 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
             f'</table></div>'
         )
 
+    st.markdown(f"""
+    <style>
+    .dre-t{{width:100%;border-collapse:collapse;font-size:0.72rem;font-family:monospace;}}
+    .dre-t th{{background:{C['dre_hdr']};color:{C['text_muted']};text-transform:uppercase;
+              letter-spacing:.06em;padding:7px 14px;text-align:right;
+              border-bottom:1px solid {C['dre_border']};white-space:nowrap;}}
+    .dre-t th:first-child{{text-align:left;min-width:170px;}}
+    .dre-t td{{padding:5px 14px;border-bottom:1px solid {C['dre_border']};
+              color:{C['text_primary']};text-align:right;white-space:nowrap;}}
+    .dre-t td:first-child{{text-align:left;color:{C['dre_td_first']};font-weight:500;}}
+    .dre-t .tc{{background:{C['card_bg']}!important;font-weight:700;
+               border-left:1px solid {C['dre_border']};}}
+    .dre-t .row-receita td{{background:rgba(0,201,167,0.04);}}
+    .dre-t .row-receita td:first-child{{color:{C['text_primary']};font-weight:700;}}
+    .dre-t .row-lucro td{{background:rgba(0,201,167,0.07);}}
+    .dre-t .row-lucro td:first-child,.dre-t .row-lucro .tc{{color:#00C9A7;font-weight:700;}}
+    .dre-t .row-custo td:first-child,.dre-t .row-custo .tc{{color:#FF6B6B;}}
+    .dre-t .row-var td{{background:rgba(168,85,247,0.04);font-size:0.68rem;}}
+    .dre-t .row-var td:first-child{{color:{C['text_muted']};font-style:italic;}}
+    .dre-t tr:hover td{{background:{C['dre_hover']}!important;}}
+    </style>
+    """, unsafe_allow_html=True)
+
     if len(dre) == 0:
         st.caption("Dados insuficientes para gerar a DRE.")
     else:
-        st.markdown("""
-        <style>
-        .dre-t{width:100%;border-collapse:collapse;font-size:0.72rem;font-family:monospace;}
-        .dre-t th{background:#1E2330;color:#6B7280;text-transform:uppercase;
-                  letter-spacing:.06em;padding:7px 14px;text-align:right;
-                  border-bottom:1px solid #2D3340;white-space:nowrap;}
-        .dre-t th:first-child{text-align:left;min-width:170px;}
-        .dre-t td{padding:5px 14px;border-bottom:1px solid #1A1C24;
-                  color:#F0F2F8;text-align:right;white-space:nowrap;}
-        .dre-t td:first-child{text-align:left;color:#9CA3AF;font-weight:500;}
-        .dre-t .tc{background:#13161D!important;font-weight:700;border-left:1px solid #2D3340;}
-        .dre-t .row-receita td{background:rgba(0,201,167,0.04);}
-        .dre-t .row-receita td:first-child{color:#F0F2F8;font-weight:700;}
-        .dre-t .row-lucro td{background:rgba(0,201,167,0.07);}
-        .dre-t .row-lucro td:first-child,.dre-t .row-lucro .tc{color:#00C9A7;font-weight:700;}
-        .dre-t .row-custo td:first-child,.dre-t .row-custo .tc{color:#FF6B6B;}
-        .dre-t .row-var td{background:rgba(255,255,255,0.02);font-style:italic;}
-        .dre-t .row-var td:first-child{color:#6B7280;}
-        .dre-t tr:hover td{background:#13161D!important;}
-        </style>
-        """, unsafe_allow_html=True)
+        semana_cols = [f"Sem {int(w)}" for w in dre['semana']]
+        total_sem = {
+            'Sessões Pagas':     f"{int(dre['sessoes'].sum()):,}",
+            'kWh Entregues':     f"{dre['kwh'].sum():,.1f}",
+            'R$ Início Recarga': f"R$ {dre['r_inicio'].sum():,.2f}",
+            'R$ Energia (kWh)':  f"R$ {dre['r_kwh_rec'].sum():,.2f}",
+            'R$ Ociosidade':     f"R$ {dre['r_ocio'].sum():,.2f}",
+            'RECEITA TOTAL':     f"R$ {dre['receita_total'].sum():,.2f}",
+            '(-) Custo Energia': f"R$ {dre['custo_energia'].sum():,.2f}",
+            '(-) Custo Operac.': f"R$ {dre['custo_operacional'].sum():,.2f}",
+            '(=) LUCRO BRUTO':   f"R$ {dre['lucro_bruto'].sum():,.2f}",
+            'Margem (%)':        (f"{dre['lucro_bruto'].sum()/dre['receita_total'].sum()*100:.1f}%"
+                                  if dre['receita_total'].sum() else '–'),
+        }
+        ind_sem = [
+            ('Sessões Pagas',     [f"{int(r['sessoes']):,}"           for _,r in dre.iterrows()], ''),
+            ('kWh Entregues',     [f"{r['kwh']:,.1f}"                  for _,r in dre.iterrows()], ''),
+            ('R$ Início Recarga', [f"R$ {r['r_inicio']:,.2f}"          for _,r in dre.iterrows()], ''),
+            ('R$ Energia (kWh)',  [f"R$ {r['r_kwh_rec']:,.2f}"         for _,r in dre.iterrows()], ''),
+            ('R$ Ociosidade',     [f"R$ {r['r_ocio']:,.2f}"            for _,r in dre.iterrows()], ''),
+            ('RECEITA TOTAL',     [f"R$ {r['receita_total']:,.2f}"     for _,r in dre.iterrows()], 'receita'),
+            ('(-) Custo Energia', [f"R$ {r['custo_energia']:,.2f}"     for _,r in dre.iterrows()], 'custo'),
+            ('(-) Custo Operac.', [f"R$ {r['custo_operacional']:,.2f}" for _,r in dre.iterrows()], 'custo'),
+            ('(=) LUCRO BRUTO',   [f"R$ {r['lucro_bruto']:,.2f}"       for _,r in dre.iterrows()], 'lucro'),
+            ('Margem (%)',        [f"{r['margem']:.1f}%"               for _,r in dre.iterrows()], 'lucro'),
+        ]
+        st.markdown(_dre_html(dre, semana_cols, total_sem, ind_sem), unsafe_allow_html=True)
 
-        st.markdown("**Por Semana**", unsafe_allow_html=False)
-        st.markdown(_render_dre_html(dre, 'semana', 'Sem '), unsafe_allow_html=True)
-
-        if len(dre_mes) > 0:
-            st.markdown("<br>**Por Mês**", unsafe_allow_html=True)
-            st.markdown(_render_dre_html(dre_mes, 'mes_label', ''), unsafe_allow_html=True)
-
-        # Botão Excel
+    # ── DRE MENSAL ────────────────────────────────────────────────────────────────
+    if len(dre_mes) > 1:
         st.markdown("<br>", unsafe_allow_html=True)
-        _xls = build_dre_excel(dre, dre_mes)
-        st.download_button(
-            label="⬇ Exportar DRE (.xlsx)",
-            data=_xls,
-            file_name=f"dre_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            width='content',
-        )
+        section("DRE — Demonstrativo de Resultado por Mês")
+        mes_cols  = dre_mes['label'].tolist()
+        total_mes = {
+            'Sessões Pagas':     f"{int(dre_mes['sessoes'].sum()):,}",
+            'kWh Entregues':     f"{dre_mes['kwh'].sum():,.1f}",
+            'R$ Início Recarga': f"R$ {dre_mes['r_inicio'].sum():,.2f}",
+            'R$ Energia (kWh)':  f"R$ {dre_mes['r_kwh_rec'].sum():,.2f}",
+            'R$ Ociosidade':     f"R$ {dre_mes['r_ocio'].sum():,.2f}",
+            'RECEITA TOTAL':     f"R$ {dre_mes['receita_total'].sum():,.2f}",
+            '(-) Custo Energia': f"R$ {dre_mes['custo_energia'].sum():,.2f}",
+            '(-) Custo Operac.': f"R$ {dre_mes['custo_operacional'].sum():,.2f}",
+            '(=) LUCRO BRUTO':   f"R$ {dre_mes['lucro_bruto'].sum():,.2f}",
+            'Margem (%)':        (f"{dre_mes['lucro_bruto'].sum()/dre_mes['receita_total'].sum()*100:.1f}%"
+                                  if dre_mes['receita_total'].sum() else '–'),
+        }
+        ind_mes = [
+            ('Sessões Pagas',     [f"{int(r['sessoes']):,}"           for _,r in dre_mes.iterrows()], ''),
+            ('kWh Entregues',     [f"{r['kwh']:,.1f}"                  for _,r in dre_mes.iterrows()], ''),
+            ('R$ Início Recarga', [f"R$ {r['r_inicio']:,.2f}"          for _,r in dre_mes.iterrows()], ''),
+            ('R$ Energia (kWh)',  [f"R$ {r['r_kwh_rec']:,.2f}"         for _,r in dre_mes.iterrows()], ''),
+            ('R$ Ociosidade',     [f"R$ {r['r_ocio']:,.2f}"            for _,r in dre_mes.iterrows()], ''),
+            ('RECEITA TOTAL',     [f"R$ {r['receita_total']:,.2f}"     for _,r in dre_mes.iterrows()], 'receita'),
+            ('(-) Custo Energia', [f"R$ {r['custo_energia']:,.2f}"     for _,r in dre_mes.iterrows()], 'custo'),
+            ('(-) Custo Operac.', [f"R$ {r['custo_operacional']:,.2f}" for _,r in dre_mes.iterrows()], 'custo'),
+            ('(=) LUCRO BRUTO',   [f"R$ {r['lucro_bruto']:,.2f}"       for _,r in dre_mes.iterrows()], 'lucro'),
+            ('Margem (%)',        [f"{r['margem']:.1f}%"               for _,r in dre_mes.iterrows()], 'lucro'),
+        ]
+        st.markdown(_dre_html(dre_mes, mes_cols, total_mes, ind_mes), unsafe_allow_html=True)
+
     st.markdown("<br>", unsafe_allow_html=True)
 
     # ── EXPORTAR PDF ──────────────────────────────────────────────────────────
@@ -1672,12 +1723,45 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
 
 
 
+# ─── AUTH ─────────────────────────────────────────────────────────────────────
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.markdown("""
+    <style>
+    .login-logo{font-size:1.6rem;font-weight:800;color:#00C9A7;letter-spacing:-0.02em;
+                margin-bottom:0.2rem;text-align:center;}
+    .login-sub{font-size:0.72rem;color:#6B7280;text-align:center;}
+    </style>
+    """, unsafe_allow_html=True)
+
+    _, col, _ = st.columns([1, 1.4, 1])
+    with col:
+        st.markdown(
+            '<div style="padding:2rem 0 1.5rem">'
+            '<div class="login-logo">⚡ Dashboard Financeiro</div>'
+            '<div class="login-sub">Análise financeira de redes de recarga — acesso restrito</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        user = st.text_input("Usuário", key="login_user", placeholder="usuário")
+        pw   = st.text_input("Senha",   key="login_pw",   placeholder="senha", type="password")
+        if st.button("Entrar", type="primary", use_container_width=True):
+            if user in _CREDENTIALS and _hash_pw(pw) == _CREDENTIALS[user]:
+                st.session_state.authenticated = True
+                st.session_state.logged_user   = user
+                st.rerun()
+            else:
+                st.error("Usuário ou senha incorretos.", icon="🔒")
+    st.stop()
+
 # ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown(
         '<div style="padding:1rem 0 1.5rem">'
         '<div style="font-size:1.3rem;font-weight:800;color:#00C9A7">Dashboard financeiro</div>'
-        '<div style="font-size:0.75rem;color:#6B7280;margin-top:2px">Análise financeira da operação da rede de recarga</div>'
+        '<div style="font-size:0.75rem;color:#6B7280;margin-top:2px">Análise financeira da operação da rede de recarga. Use com cuidado e não transmita dados sensíveis.</div>'
         '</div>',
         unsafe_allow_html=True
     )
@@ -1691,18 +1775,16 @@ with st.sidebar:
     st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">DATASETS DE EXEMPLO</div>', unsafe_allow_html=True)
     _DATASETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'datasets')
     _EXAMPLE_MAP = {
-        'Supermercados — Cidade':          '4AC-supermercados-cidade-jan-abr.xlsx',
-        'Posto Cidade — Metrópole':        '1AC-1DC30-postocidade-metropole-jan-abr.xlsx',
-        'Posto Cidade — Turismo (AC+DC60)':'2AC-1DC60-postocidade-turismo-jan-abr.xlsx',
-        'Posto Cidade — Turismo (DC30)':   '2DC30-postocidade-turismo-jan-abr.xlsx',
-        'Posto Cidade — Nordeste':         '1AC-1DC60-postocidade-nordeste-jan-abr.xlsx',
+        'Supermercados — Cidade':           '4AC-supermercados-cidade-jan-abr.xlsx',
+        'Posto Cidade — Metrópole':         '1AC-1DC30-postocidade-metropole-jan-abr.xlsx',
+        'Posto Cidade — Turismo (AC+DC60)': '2AC-1DC60-postocidade-turismo-jan-abr.xlsx',
+        'Posto Cidade — Turismo (DC30)':    '2DC30-postocidade-turismo-jan-abr.xlsx',
+        'Posto Cidade — Nordeste':          '1AC-1DC60-postocidade-nordeste-jan-abr.xlsx',
     }
     _example_choices = st.multiselect(
-        "Selecionar dataset",
-        options=list(_EXAMPLE_MAP.keys()),
-        default=[],
-        key="example_datasets",
-        label_visibility="collapsed",
+        "Selecionar dataset", options=list(_EXAMPLE_MAP.keys()),
+        default=[], key="example_datasets", label_visibility="collapsed",
+        placeholder="Selecionar dados",
     )
 
     st.markdown("---")
@@ -1713,15 +1795,24 @@ with st.sidebar:
             st.markdown(f'<div style="font-size:0.68rem;color:#F0F2F8;padding:3px 0">&#128196; {f.name}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown('<div style="font-size:0.62rem;color:#6B7280">MODO DE ANÁLISE</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:0.75rem;color:#6B7280">MODO DE ANÁLISE</div>', unsafe_allow_html=True)
     mode = st.radio("", ["Por estação (individual)", "Consolidado (todos os arquivos)"],
                     label_visibility="collapsed")
 
     anon = False
     if uploaded_files or _example_choices:
         st.markdown("---")
-        _anon_default = bool(_example_choices)  # True quando só há datasets de exemplo
-        anon = st.toggle("Anonimizar nomes (A, B, C...)", value=_anon_default)
+        _is_restricted = st.session_state.get('logged_user') in _RESTRICTED_USERS
+        _force_anon    = _is_restricted and bool(_example_choices)
+        _anon_default  = _force_anon or bool(_example_choices and not uploaded_files)
+        anon = st.toggle(
+            "Anonimizar nomes (A, B, C...)",
+            value=_anon_default,
+            disabled=_force_anon,
+            help="Anonimização obrigatória para datasets pré-definidos neste perfil." if _force_anon else None,
+        )
+        if _force_anon:
+            anon = True  # garante o valor mesmo com o toggle desabilitado
 
     st.markdown("---")
     st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">PARÂMETROS DE CUSTO</div>', unsafe_allow_html=True)
@@ -1741,6 +1832,18 @@ with st.sidebar:
     horas_dia = max(1, hora_fim - hora_inicio)
     st.markdown(f'<div style="font-size:0.75rem;color:#00C9A7;margin-top:2px">&#9201; {horas_dia}h disponíveis/dia</div>', unsafe_allow_html=True)
 
+    st.markdown("---")
+    _logged_user = st.session_state.get('logged_user', 'admin')
+    st.markdown(
+        f'<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.4rem">'
+        f'Conectado como <span style="color:#F0F2F8">{_logged_user}</span></div>',
+        unsafe_allow_html=True,
+    )
+    if st.button("Sair", use_container_width=True):
+        st.session_state.authenticated = False
+        st.session_state.logged_user   = ""
+        st.rerun()
+
 # ─── MAIN ─────────────────────────────────────────────────────────────────────
 st.markdown(
     '<div style="margin-bottom:1.5rem">'
@@ -1755,14 +1858,13 @@ if not uploaded_files and not _example_choices:
         '<div style="text-align:center;padding:4rem 2rem;color:#6B7280">'
         '<div style="font-size:3rem;margin-bottom:1rem">&#9889;</div>'
         '<div style="font-size:1.2rem;font-weight:700;color:#F0F2F8;margin-bottom:0.5rem">Nenhum arquivo carregado</div>'
-        '<div style="font-size:0.75rem;line-height:1.7">Use o painel lateral para fazer upload dos arquivos .xlsx ou selecione um dataset de exemplo.</div>'
+        '<div style="font-size:0.75rem;line-height:1.7">Use o painel lateral para fazer upload de arquivos .xlsx ou selecione um dataset de exemplo.</div>'
         '</div>',
         unsafe_allow_html=True
     )
     st.stop()
 
 # ─── LOAD DATA ────────────────────────────────────────────────────────────────
-# Combina uploads manuais + datasets de exemplo numa única lista (bytes, nome)
 _file_sources = [(f.read(), f.name) for f in (uploaded_files or [])]
 for _label in _example_choices:
     _fpath = os.path.join(_DATASETS_DIR, _EXAMPLE_MAP[_label])
