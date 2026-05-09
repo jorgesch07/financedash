@@ -1249,7 +1249,7 @@ def build_dre_table(df, custo_kwh, custo_pct):
 def build_dre_monthly(df, custo_kwh, custo_pct):
     """Monta o DataFrame da DRE mensal com variação mês a mês."""
     paid = df[df['paid']].copy()
-    for c in ['Receita(R$) por Início de Recarga','Receita(R$) por kWh','Valor Ociosidade','Energia(kWh)']:
+    for c in ['Receita(R$) por Início de Recarga','Receita(R$) por kWh','Valor Ociosidade','Energia(kgit Wh)']:
         if c not in paid.columns: paid[c] = 0
         paid[c] = pd.to_numeric(paid[c], errors='coerce').fillna(0)
     paid['r_inicio'] = paid['Receita(R$) por Início de Recarga']
@@ -1718,9 +1718,10 @@ with st.sidebar:
                     label_visibility="collapsed")
 
     anon = False
-    if uploaded_files:
+    if uploaded_files or _example_choices:
         st.markdown("---")
-        anon = st.toggle("Anonimizar nomes (A, B, C...)", value=False)
+        _anon_default = bool(_example_choices)  # True quando só há datasets de exemplo
+        anon = st.toggle("Anonimizar nomes (A, B, C...)", value=_anon_default)
 
     st.markdown("---")
     st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">PARÂMETROS DE CUSTO</div>', unsafe_allow_html=True)
