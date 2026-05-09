@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import io
+import os
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -1687,6 +1688,24 @@ with st.sidebar:
     )
 
     st.markdown("---")
+    st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">DATASETS DE EXEMPLO</div>', unsafe_allow_html=True)
+    _DATASETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'datasets')
+    _EXAMPLE_MAP = {
+        'Supermercados — Cidade':          '4AC-supermercados-cidade-jan-abr.xlsx',
+        'Posto Cidade — Metrópole':        '1AC-1DC30-postocidade-metropole-jan-abr.xlsx',
+        'Posto Cidade — Turismo (AC+DC60)':'2AC-1DC60-postocidade-turismo-jan-abr.xlsx',
+        'Posto Cidade — Turismo (DC30)':   '2DC30-postocidade-turismo-jan-abr.xlsx',
+        'Posto Cidade — Nordeste':         '1AC-1DC60-postocidade-nordeste-jan-abr.xlsx',
+    }
+    _example_choices = st.multiselect(
+        "Selecionar dataset",
+        options=list(_EXAMPLE_MAP.keys()),
+        default=[],
+        key="example_datasets",
+        label_visibility="collapsed",
+    )
+
+    st.markdown("---")
 
     if uploaded_files:
         st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">ARQUIVOS CARREGADOS</div>', unsafe_allow_html=True)
@@ -1730,26 +1749,33 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-if not uploaded_files:
+if not uploaded_files and not _example_choices:
     st.markdown(
         '<div style="text-align:center;padding:4rem 2rem;color:#6B7280">'
         '<div style="font-size:3rem;margin-bottom:1rem">&#9889;</div>'
         '<div style="font-size:1.2rem;font-weight:700;color:#F0F2F8;margin-bottom:0.5rem">Nenhum arquivo carregado</div>'
-        '<div style="font-size:0.75rem;line-height:1.7">Use o painel lateral para fazer upload dos arquivos .xlsx de relatório de recargas.</div>'
+        '<div style="font-size:0.75rem;line-height:1.7">Use o painel lateral para fazer upload dos arquivos .xlsx ou selecione um dataset de exemplo.</div>'
         '</div>',
         unsafe_allow_html=True
     )
     st.stop()
 
 # ─── LOAD DATA ────────────────────────────────────────────────────────────────
+# Combina uploads manuais + datasets de exemplo numa única lista (bytes, nome)
+_file_sources = [(f.read(), f.name) for f in (uploaded_files or [])]
+for _label in _example_choices:
+    _fpath = os.path.join(_DATASETS_DIR, _EXAMPLE_MAP[_label])
+    with open(_fpath, 'rb') as _fh:
+        _file_sources.append((_fh.read(), _EXAMPLE_MAP[_label]))
+
 with st.spinner("Processando arquivos..."):
     dfs = {}
-    for f in uploaded_files:
-        raw = load_file(f.read(), f.name)
+    for _fbytes, _fname in _file_sources:
+        raw = load_file(_fbytes, _fname)
         processed = process_df(raw)
         col = 'Estação' if 'Estação' in processed.columns else 'Estacao'
         stations_in_file = processed[col].dropna().unique() if col in processed.columns else []
-        station_name = stations_in_file[0] if len(stations_in_file) == 1 else f.name.replace('.xlsx','')
+        station_name = stations_in_file[0] if len(stations_in_file) == 1 else _fname.replace('.xlsx','')
         dfs[station_name] = processed
 
 if anon:
