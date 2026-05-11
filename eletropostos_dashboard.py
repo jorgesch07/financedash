@@ -40,6 +40,7 @@ _CREDENTIALS: dict[str, str] = {
     # usuário : sha256(senha)
     "admin":     "9531bb8a0886f2fe7f29f91fbadf09d0903aede2f2c00e9c12d95ba785c22298",
     "comercial": "ea7d5b4094d4b7ca52588ab674da3ef3fb6d78cc4394b2776d88d7f176761964",
+    "test": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"
 }
 
 # Usuários que não podem remover o anonimato dos datasets pré-definidos
