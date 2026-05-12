@@ -322,24 +322,30 @@ def process_df(df):
     return df
 
 def compute_kpis(df):
-    paid = df[df['paid']]
+    paid = df[df['paid']].copy()
+    for _c in ['Receita(R$) por Início de Recarga','Receita(R$) por kWh','Valor Ociosidade','Energia(kWh)']:
+        if _c not in paid.columns: paid[_c] = 0.0
+        paid[_c] = pd.to_numeric(paid[_c], errors='coerce').fillna(0)
+    paid['_rev'] = (paid['Receita(R$) por Início de Recarga']
+                    + paid['Energia(kWh)'] * paid['Receita(R$) por kWh']
+                    + paid['Valor Ociosidade'])
     energy = df[df['Energia(kWh)'] > 0]
     paid_e = paid[paid['Energia(kWh)'] > 0]
     attempts = df['Pago?'].isin(['sim','nao']).sum()
     days = df['data'].nunique() or 1
-    total_rev = paid['Receita(R$)'].sum()
+    total_rev = paid['_rev'].sum()
     pending_rev = df[df['pending']]['Receita(R$)'].sum()
     tag_col = 'Usuário(Tag)' if 'Usuário(Tag)' in df.columns else 'Usuário (ID)'
     user_counts = df.groupby(tag_col).size()
     kwh_total = energy['Energia(kWh)'].sum()
-    rev_per_kwh = (paid_e['Receita(R$)'].sum() / paid_e['Energia(kWh)'].sum()
+    rev_per_kwh = (paid_e['_rev'].sum() / paid_e['Energia(kWh)'].sum()
                    if paid_e['Energia(kWh)'].sum() > 0 else 0)
-    power_rev = df[df[tag_col].isin(user_counts[user_counts>=5].index)]['Receita(R$)'].sum()
+    power_rev = paid[paid[tag_col].isin(user_counts[user_counts>=5].index)]['_rev'].sum()
     return dict(
         total_sessions=len(df), paid_sessions=len(paid), revenue=total_rev,
         pending_rev=pending_rev, energy_kwh=kwh_total,
         avg_kwh=energy['Energia(kWh)'].mean() if len(energy) else 0,
-        avg_ticket=paid['Receita(R$)'].mean() if len(paid) else 0,
+        avg_ticket=paid['_rev'].mean() if len(paid) else 0,
         rev_per_kwh=rev_per_kwh, rev_per_day=total_rev/days,
         kwh_per_day=kwh_total/days,
         sessions_per_day=len(df)/days, days=days,
@@ -366,15 +372,21 @@ def apply_axes(fig, xkw=None, ykw=None, show_legend=True):
 def fig_daily(dfs):
     fig = go.Figure()
     for i, (name, sdf) in enumerate(dfs.items()):
-        daily = (sdf[sdf['paid']]
-                 .groupby('data')['Receita(R$)'].sum()
+        _paid = sdf[sdf['paid']].copy()
+        for _c in ['Receita(R$) por Início de Recarga','Receita(R$) por kWh','Valor Ociosidade','Energia(kWh)']:
+            if _c not in _paid.columns: _paid[_c] = 0.0
+            _paid[_c] = pd.to_numeric(_paid[_c], errors='coerce').fillna(0)
+        _paid['_rev'] = (_paid['Receita(R$) por Início de Recarga']
+                         + _paid['Energia(kWh)'] * _paid['Receita(R$) por kWh']
+                         + _paid['Valor Ociosidade'])
+        daily = (_paid.groupby('data')['_rev'].sum()
                  .reset_index()
                  .sort_values('data'))
         daily['data'] = pd.to_datetime(daily['data'])
         c = COLORS[i % len(COLORS)]
         r, g, b = int(c[1:3],16), int(c[3:5],16), int(c[5:7],16)
         fig.add_trace(go.Scatter(
-            x=daily['data'], y=daily['Receita(R$)'],
+            x=daily['data'], y=daily['_rev'],
             name=name, mode='lines',
             line=dict(color=c, width=2),
             fill='tozeroy',
@@ -582,8 +594,14 @@ def fig_occupancy(df, top_n=15, horas_dia=24):
 
 def fig_revenue_cost_profit(df, custo_kwh, custo_pct):
     paid = df[df['paid']].copy()
+    for _c in ['Receita(R$) por Início de Recarga','Receita(R$) por kWh','Valor Ociosidade','Energia(kWh)']:
+        if _c not in paid.columns: paid[_c] = 0.0
+        paid[_c] = pd.to_numeric(paid[_c], errors='coerce').fillna(0)
+    paid['_rev'] = (paid['Receita(R$) por Início de Recarga']
+                    + paid['Energia(kWh)'] * paid['Receita(R$) por kWh']
+                    + paid['Valor Ociosidade'])
     daily = paid.groupby('data').agg(
-        receita=('Receita(R$)','sum'),
+        receita=('_rev','sum'),
         kwh=('Energia(kWh)','sum'),
     ).reset_index().sort_values('data')
     daily['data'] = pd.to_datetime(daily['data'])
@@ -765,8 +783,14 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
 
         # ── Pré-computa valores de custo (usados no sumário e na seção de custos) ──
         paid_df = df[df['paid']].copy()
+        for _c in ['Receita(R$) por Início de Recarga','Receita(R$) por kWh','Valor Ociosidade','Energia(kWh)']:
+            if _c not in paid_df.columns: paid_df[_c] = 0.0
+            paid_df[_c] = pd.to_numeric(paid_df[_c], errors='coerce').fillna(0)
+        paid_df['_rev'] = (paid_df['Receita(R$) por Início de Recarga']
+                           + paid_df['Energia(kWh)'] * paid_df['Receita(R$) por kWh']
+                           + paid_df['Valor Ociosidade'])
         daily_c = paid_df.groupby('data').agg(
-            receita=('Receita(R$)','sum'), kwh=('Energia(kWh)','sum')).reset_index()
+            receita=('_rev','sum'), kwh=('Energia(kWh)','sum')).reset_index()
         daily_c['custo'] = daily_c['receita']*(custo_pct/100) + daily_c['kwh']*custo_kwh
         daily_c['lucro'] = daily_c['receita'] - daily_c['custo']
         total_r = daily_c['receita'].sum()
@@ -940,21 +964,21 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
                 'desconto_voucher' in _dre.columns and _dre['desconto_voucher'].sum() > 0
             )
             _dre_totals = {
-                'Sessões Pagas':        f"{int(_dre['sessoes'].sum()):,}",
-                'kWh Entregues':        f"{_dre['kwh'].sum():,.1f}",
-                'R$ Início Recarga':    f"R$ {_dre['r_inicio'].sum():,.2f}",
-                'R$ Energia (kWh)':     f"R$ {_dre['r_kwh_rec'].sum():,.2f}",
-                'R$ Ociosidade':        f"R$ {_dre['r_ocio'].sum():,.2f}",
-                '(−) Desconto Voucher': (f"(−) R$ {_dre['desconto_voucher'].sum():,.2f}"
-                                         if _pdf_has_voucher else '–'),
-                'RECEITA BRUTA':        (f"R$ {_dre['receita_bruta'].sum():,.2f}"
-                                         if _pdf_has_voucher else '–'),
-                'RECEITA TOTAL':        f"R$ {_dre['receita_total'].sum():,.2f}",
-                '(-) Custo Energia':    f"R$ {_dre['custo_energia'].sum():,.2f}",
-                '(-) Custo Operac.':    f"R$ {_dre['custo_operacional'].sum():,.2f}",
-                '(=) LUCRO BRUTO':      f"R$ {_dre['lucro_bruto'].sum():,.2f}",
-                'Margem (%)':           (f"{_dre['lucro_bruto'].sum()/_dre['receita_total'].sum()*100:.1f}%"
-                                         if _dre['receita_total'].sum() else '–'),
+                'Sessões Pagas':           f"{int(_dre['sessoes'].sum()):,}",
+                'kWh Entregues':           f"{_dre['kwh'].sum():,.1f}",
+                'R$ Início Recarga':       f"R$ {_dre['r_inicio'].sum():,.2f}",
+                'R$ Energia (kWh)':        f"R$ {_dre['r_kwh_rec'].sum():,.2f}",
+                'R$ Ociosidade':           f"R$ {_dre['r_ocio'].sum():,.2f}",
+                'RECEITA BRUTA PRESUMIDA': (f"R$ {_dre['receita_bruta_presumida'].sum():,.2f}"
+                                            if _pdf_has_voucher else '–'),
+                '(−) Desconto Voucher':    (f"(−) R$ {_dre['desconto_voucher'].sum():,.2f}"
+                                            if _pdf_has_voucher else '–'),
+                'RECEITA LÍQUIDA':         f"R$ {_dre['receita_total'].sum():,.2f}",
+                '(-) Custo Energia':       f"R$ {_dre['custo_energia'].sum():,.2f}",
+                '(-) Custo Operac.':       f"R$ {_dre['custo_operacional'].sum():,.2f}",
+                '(=) LUCRO BRUTO':         f"R$ {_dre['lucro_bruto'].sum():,.2f}",
+                'Margem (%)':              (f"{_dre['lucro_bruto'].sum()/_dre['receita_total'].sum()*100:.1f}%"
+                                            if _dre['receita_total'].sum() else '–'),
             }
             _dre_inds = [
                 ('Sessões Pagas',    [f"{int(r['sessoes']):,}"           for _,r in _dre.iterrows()]),
@@ -965,13 +989,13 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
             ]
             if _pdf_has_voucher:
                 _dre_inds += [
+                    ('RECEITA BRUTA PRESUMIDA',
+                     [f"R$ {r['receita_bruta_presumida']:,.2f}" for _,r in _dre.iterrows()]),
                     ('(−) Desconto Voucher',
-                     [f"(−) R$ {r['desconto_voucher']:,.2f}" for _,r in _dre.iterrows()]),
-                    ('RECEITA BRUTA',
-                     [f"R$ {r['receita_bruta']:,.2f}"        for _,r in _dre.iterrows()]),
+                     [f"(−) R$ {r['desconto_voucher']:,.2f}"   for _,r in _dre.iterrows()]),
                 ]
             _dre_inds += [
-                ('RECEITA TOTAL',    [f"R$ {r['receita_total']:,.2f}"     for _,r in _dre.iterrows()]),
+                ('RECEITA LÍQUIDA',  [f"R$ {r['receita_total']:,.2f}"     for _,r in _dre.iterrows()]),
                 ('(-) Custo Energia',[f"R$ {r['custo_energia']:,.2f}"     for _,r in _dre.iterrows()]),
                 ('(-) Custo Operac.',[f"R$ {r['custo_operacional']:,.2f}" for _,r in _dre.iterrows()]),
                 ('(=) LUCRO BRUTO',  [f"R$ {r['lucro_bruto']:,.2f}"       for _,r in _dre.iterrows()]),
@@ -991,11 +1015,11 @@ def generate_pdf(df, kpis, custo_kwh, custo_pct, dfs, color, title="Relatorio", 
             ]
             for _i, (_lbl, _vals) in enumerate(_dre_inds):
                 _ri    = _i + 1
-                _is_r  = _lbl == 'RECEITA TOTAL'
+                _is_r  = _lbl == 'RECEITA LÍQUIDA'
                 _is_l  = _lbl == '(=) LUCRO BRUTO'
                 _is_c  = _lbl.startswith('(-)')
                 _is_m  = _lbl == 'Margem (%)'
-                _is_b  = _lbl == 'RECEITA BRUTA'
+                _is_b  = _lbl == 'RECEITA BRUTA PRESUMIDA'
                 _is_dv = _lbl == '(−) Desconto Voucher'
                 if _is_l or _is_m:
                     _lc = C_GREEN
@@ -1465,11 +1489,7 @@ def build_dre_table(df, custo_kwh, custo_pct):
 
     # Voucher: receita bruta hipotética e desconto
     paid['is_voucher']      = _voucher_mask(paid)
-    paid['bruta_sessao']    = np.where(
-        paid['is_voucher'],
-        paid['Energia(kWh)'] * paid['Receita(R$) por kWh'] + paid['Receita(R$) por Início de Recarga'],
-        paid['Receita(R$)'],   # sem voucher: bruta = líquida
-    )
+    paid['bruta_sessao']    = paid['r_inicio'] + paid['r_kwh'] + paid['r_ocio']
     paid['desconto_sessao'] = np.where(
         paid['is_voucher'],
         (paid['bruta_sessao'] - paid['Receita(R$)']).clip(lower=0),
@@ -1487,7 +1507,8 @@ def build_dre_table(df, custo_kwh, custo_pct):
         desconto_voucher=('desconto_sessao','sum'),
     ).reset_index()
 
-    weekly['receita_total'] = weekly['r_inicio'] + weekly['r_kwh_rec'] + weekly['r_ocio']
+    weekly['receita_total']           = weekly['r_inicio'] + weekly['r_kwh_rec'] + weekly['r_ocio']
+    weekly['receita_bruta_presumida'] = weekly['receita_total'] + weekly['desconto_voucher']
     weekly['custo_energia'] = weekly['kwh'] * custo_kwh
     weekly['custo_operacional'] = weekly['receita_total'] * (custo_pct / 100)
     weekly['custo_total'] = weekly['custo_energia'] + weekly['custo_operacional']
@@ -1503,7 +1524,8 @@ def build_dre_table(df, custo_kwh, custo_pct):
 def _dre_agg(paid, custo_kwh, custo_pct):
     """Agrega colunas financeiras comuns a todas as granularidades de DRE."""
     df = paid.copy()
-    df['receita_total']    = df['r_inicio'] + df['r_kwh_rec'] + df['r_ocio']
+    df['receita_total']           = df['r_inicio'] + df['r_kwh_rec'] + df['r_ocio']
+    df['receita_bruta_presumida'] = df['receita_total'] + df['desconto_voucher']
     df['custo_energia']    = df['kwh'] * custo_kwh
     df['custo_operacional']= df['receita_total'] * (custo_pct / 100)
     df['custo_total']      = df['custo_energia'] + df['custo_operacional']
@@ -1530,11 +1552,7 @@ def _dre_paid_base(df):
     paid['r_kwh']    = paid['Energia(kWh)'] * paid['Receita(R$) por kWh']
     paid['r_ocio']   = paid['Valor Ociosidade']
     paid['is_voucher']      = _voucher_mask(paid)
-    paid['bruta_sessao']    = np.where(
-        paid['is_voucher'],
-        paid['Energia(kWh)'] * paid['Receita(R$) por kWh'] + paid['Receita(R$) por Início de Recarga'],
-        paid['Receita(R$)'],
-    )
+    paid['bruta_sessao']    = paid['r_inicio'] + paid['r_kwh'] + paid['r_ocio']
     paid['desconto_sessao'] = np.where(
         paid['is_voucher'],
         (paid['bruta_sessao'] - paid['Receita(R$)']).clip(lower=0),
@@ -1849,19 +1867,19 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         _has_voucher = dre['desconto_voucher'].sum() > 0
 
         total_sem = {
-            'Sessões Pagas':        f"{int(dre['sessoes'].sum()):,}",
-            'kWh Entregues':        f"{dre['kwh'].sum():,.1f}",
-            'R$ Início Recarga':    f"R$ {dre['r_inicio'].sum():,.2f}",
-            'R$ Energia (kWh)':     f"R$ {dre['r_kwh_rec'].sum():,.2f}",
-            'R$ Ociosidade':        f"R$ {dre['r_ocio'].sum():,.2f}",
-            '(−) Desconto Voucher': f"(−) R$ {dre['desconto_voucher'].sum():,.2f}",
-            'RECEITA BRUTA':        f"R$ {dre['receita_bruta'].sum():,.2f}",
-            'RECEITA TOTAL':        f"R$ {dre['receita_total'].sum():,.2f}",
-            '(-) Custo Energia':    f"R$ {dre['custo_energia'].sum():,.2f}",
-            '(-) Custo Operac.':    f"R$ {dre['custo_operacional'].sum():,.2f}",
-            '(=) LUCRO BRUTO':      f"R$ {dre['lucro_bruto'].sum():,.2f}",
-            'Margem (%)':           (f"{dre['lucro_bruto'].sum()/dre['receita_total'].sum()*100:.1f}%"
-                                     if dre['receita_total'].sum() else '–'),
+            'Sessões Pagas':           f"{int(dre['sessoes'].sum()):,}",
+            'kWh Entregues':           f"{dre['kwh'].sum():,.1f}",
+            'R$ Início Recarga':       f"R$ {dre['r_inicio'].sum():,.2f}",
+            'R$ Energia (kWh)':        f"R$ {dre['r_kwh_rec'].sum():,.2f}",
+            'R$ Ociosidade':           f"R$ {dre['r_ocio'].sum():,.2f}",
+            'RECEITA BRUTA PRESUMIDA': f"R$ {dre['receita_bruta_presumida'].sum():,.2f}",
+            '(−) Desconto Voucher':    f"(−) R$ {dre['desconto_voucher'].sum():,.2f}",
+            'RECEITA LÍQUIDA':         f"R$ {dre['receita_total'].sum():,.2f}",
+            '(-) Custo Energia':       f"R$ {dre['custo_energia'].sum():,.2f}",
+            '(-) Custo Operac.':       f"R$ {dre['custo_operacional'].sum():,.2f}",
+            '(=) LUCRO BRUTO':         f"R$ {dre['lucro_bruto'].sum():,.2f}",
+            'Margem (%)':              (f"{dre['lucro_bruto'].sum()/dre['receita_total'].sum()*100:.1f}%"
+                                        if dre['receita_total'].sum() else '–'),
         }
         ind_sem = [
             ('Sessões Pagas',     [f"{int(r['sessoes']):,}"           for _,r in dre.iterrows()], ''),
@@ -1872,11 +1890,11 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         ]
         if _has_voucher:
             ind_sem += [
-                ('(−) Desconto Voucher', [f"(−) R$ {r['desconto_voucher']:,.2f}" for _,r in dre.iterrows()], 'desconto'),
-                ('RECEITA BRUTA',        [f"R$ {r['receita_bruta']:,.2f}"         for _,r in dre.iterrows()], 'bruta-hipo'),
+                ('RECEITA BRUTA PRESUMIDA', [f"R$ {r['receita_bruta_presumida']:,.2f}" for _,r in dre.iterrows()], 'bruta-hipo'),
+                ('(−) Desconto Voucher',    [f"(−) R$ {r['desconto_voucher']:,.2f}"    for _,r in dre.iterrows()], 'desconto'),
             ]
         ind_sem += [
-            ('RECEITA TOTAL',     [f"R$ {r['receita_total']:,.2f}"     for _,r in dre.iterrows()], 'receita'),
+            ('RECEITA LÍQUIDA',   [f"R$ {r['receita_total']:,.2f}"     for _,r in dre.iterrows()], 'receita'),
             ('(-) Custo Energia', [f"R$ {r['custo_energia']:,.2f}"     for _,r in dre.iterrows()], 'custo'),
             ('(-) Custo Operac.', [f"R$ {r['custo_operacional']:,.2f}" for _,r in dre.iterrows()], 'custo'),
             ('(=) LUCRO BRUTO',   [f"R$ {r['lucro_bruto']:,.2f}"       for _,r in dre.iterrows()], 'lucro'),
@@ -1891,19 +1909,19 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         mes_cols         = dre_mes['label'].tolist()
         _has_voucher_mes = dre_mes['desconto_voucher'].sum() > 0
         total_mes = {
-            'Sessões Pagas':        f"{int(dre_mes['sessoes'].sum()):,}",
-            'kWh Entregues':        f"{dre_mes['kwh'].sum():,.1f}",
-            'R$ Início Recarga':    f"R$ {dre_mes['r_inicio'].sum():,.2f}",
-            'R$ Energia (kWh)':     f"R$ {dre_mes['r_kwh_rec'].sum():,.2f}",
-            'R$ Ociosidade':        f"R$ {dre_mes['r_ocio'].sum():,.2f}",
-            '(−) Desconto Voucher': f"(−) R$ {dre_mes['desconto_voucher'].sum():,.2f}",
-            'RECEITA BRUTA':        f"R$ {dre_mes['receita_bruta'].sum():,.2f}",
-            'RECEITA TOTAL':        f"R$ {dre_mes['receita_total'].sum():,.2f}",
-            '(-) Custo Energia':    f"R$ {dre_mes['custo_energia'].sum():,.2f}",
-            '(-) Custo Operac.':    f"R$ {dre_mes['custo_operacional'].sum():,.2f}",
-            '(=) LUCRO BRUTO':      f"R$ {dre_mes['lucro_bruto'].sum():,.2f}",
-            'Margem (%)':           (f"{dre_mes['lucro_bruto'].sum()/dre_mes['receita_total'].sum()*100:.1f}%"
-                                     if dre_mes['receita_total'].sum() else '–'),
+            'Sessões Pagas':           f"{int(dre_mes['sessoes'].sum()):,}",
+            'kWh Entregues':           f"{dre_mes['kwh'].sum():,.1f}",
+            'R$ Início Recarga':       f"R$ {dre_mes['r_inicio'].sum():,.2f}",
+            'R$ Energia (kWh)':        f"R$ {dre_mes['r_kwh_rec'].sum():,.2f}",
+            'R$ Ociosidade':           f"R$ {dre_mes['r_ocio'].sum():,.2f}",
+            'RECEITA BRUTA PRESUMIDA': f"R$ {dre_mes['receita_bruta_presumida'].sum():,.2f}",
+            '(−) Desconto Voucher':    f"(−) R$ {dre_mes['desconto_voucher'].sum():,.2f}",
+            'RECEITA LÍQUIDA':         f"R$ {dre_mes['receita_total'].sum():,.2f}",
+            '(-) Custo Energia':       f"R$ {dre_mes['custo_energia'].sum():,.2f}",
+            '(-) Custo Operac.':       f"R$ {dre_mes['custo_operacional'].sum():,.2f}",
+            '(=) LUCRO BRUTO':         f"R$ {dre_mes['lucro_bruto'].sum():,.2f}",
+            'Margem (%)':              (f"{dre_mes['lucro_bruto'].sum()/dre_mes['receita_total'].sum()*100:.1f}%"
+                                        if dre_mes['receita_total'].sum() else '–'),
         }
         ind_mes = [
             ('Sessões Pagas',     [f"{int(r['sessoes']):,}"           for _,r in dre_mes.iterrows()], ''),
@@ -1914,11 +1932,11 @@ def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct
         ]
         if _has_voucher_mes:
             ind_mes += [
-                ('(−) Desconto Voucher', [f"(−) R$ {r['desconto_voucher']:,.2f}" for _,r in dre_mes.iterrows()], 'desconto'),
-                ('RECEITA BRUTA',        [f"R$ {r['receita_bruta']:,.2f}"         for _,r in dre_mes.iterrows()], 'bruta-hipo'),
+                ('RECEITA BRUTA PRESUMIDA', [f"R$ {r['receita_bruta_presumida']:,.2f}" for _,r in dre_mes.iterrows()], 'bruta-hipo'),
+                ('(−) Desconto Voucher',    [f"(−) R$ {r['desconto_voucher']:,.2f}"    for _,r in dre_mes.iterrows()], 'desconto'),
             ]
         ind_mes += [
-            ('RECEITA TOTAL',     [f"R$ {r['receita_total']:,.2f}"     for _,r in dre_mes.iterrows()], 'receita'),
+            ('RECEITA LÍQUIDA',   [f"R$ {r['receita_total']:,.2f}"     for _,r in dre_mes.iterrows()], 'receita'),
             ('(-) Custo Energia', [f"R$ {r['custo_energia']:,.2f}"     for _,r in dre_mes.iterrows()], 'custo'),
             ('(-) Custo Operac.', [f"R$ {r['custo_operacional']:,.2f}" for _,r in dre_mes.iterrows()], 'custo'),
             ('(=) LUCRO BRUTO',   [f"R$ {r['lucro_bruto']:,.2f}"       for _,r in dre_mes.iterrows()], 'lucro'),
