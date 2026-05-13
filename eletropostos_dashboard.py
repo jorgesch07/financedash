@@ -1599,6 +1599,520 @@ def build_dre_quarterly(df, custo_kwh, custo_pct):
     return g
 
 
+_PB_DEFAULTS = {
+    'pb_n_carr': 1, 'pb_custo_hw': 15000, 'pb_custo_inst': 5000,
+    'pb_pagamento': 'À vista',
+    'pb_taxa_plat': 8.0, 'pb_fixo_plat': 50.0, 'pb_impostos': 6.0,
+    'pb_manutencao': 100.0, 'pb_split': 0.0, 'pb_depre_anos': 10,
+    'pb_taxa_juros': 12.0, 'pb_custo_kwh': 0.75,
+    'pb_tarifa_kwh': 1.80, 'pb_tarifa_inicio': 0.0,
+    'pb_kwh_medio': 15.0, 'pb_dur_sessao': 60.0,
+    'pb_portfolio': False,
+}
+
+
+def _render_payback_sidebar(horas_dia):
+    """Popula a sidebar com os inputs da calculadora de payback."""
+    for k, v in _PB_DEFAULTS.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+    ss = st.session_state
+
+    st.markdown('---')
+    st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">INVESTIMENTO</div>',
+                unsafe_allow_html=True)
+    n_carr = st.number_input('Nº de carregadores', min_value=1, step=1, key='pb_n_carr')
+    custo_hw   = st.number_input('Custo unitário hardware (R$)',         min_value=0, step=500,   key='pb_custo_hw')
+    custo_inst = st.number_input('Custo de instalação por unidade (R$)', min_value=0, step=500,   key='pb_custo_inst')
+    inv_unit = custo_hw + custo_inst
+    st.markdown(
+        f'<div style="font-size:0.73rem;color:#00C9A7;margin:2px 0 4px">'
+        f'Subtotal/unid: R$ {inv_unit:,.0f} &nbsp;|&nbsp; Total: R$ {inv_unit * n_carr:,.0f}</div>',
+        unsafe_allow_html=True)
+    pagamento = st.selectbox('Forma de pagamento', ['À vista', '10x sem juros'], key='pb_pagamento')
+    if pagamento == '10x sem juros':
+        st.markdown(
+            f'<div style="font-size:0.70rem;color:#9CA3AF">'
+            f'HW: 10× R$ {custo_hw/10:,.0f}/mês  ·  '
+            f'Instalação R$ {custo_inst:,.0f} sempre à vista</div>',
+            unsafe_allow_html=True)
+
+    st.markdown('---')
+    st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">CUSTOS OPERACIONAIS</div>',
+                unsafe_allow_html=True)
+    st.number_input('Taxa plataforma Intelbras (%)',        min_value=0.0, max_value=100.0, step=0.5, format='%.1f', key='pb_taxa_plat')
+    st.number_input('Custo fixo plataforma/unid (R$/mês)', min_value=0.0, step=5.0,   format='%.0f', key='pb_fixo_plat')
+    st.number_input('Custo de energia (R$/kWh)',           min_value=0.0, step=0.05,  format='%.2f', key='pb_custo_kwh')
+    st.number_input('Impostos — Simples Nacional (%)',      min_value=0.0, max_value=100.0, step=0.5, format='%.1f', key='pb_impostos')
+    st.number_input('Manutenção/operação por unid (R$/mês)', min_value=0.0, step=10.0, format='%.0f', key='pb_manutencao')
+    st.number_input('Split com estabelecimento (%)',        min_value=0.0, max_value=100.0, step=1.0, format='%.1f', key='pb_split')
+    st.number_input('Prazo de depreciação (anos)',          min_value=1,   max_value=30,   step=1,               key='pb_depre_anos')
+    st.number_input('Taxa de juros / renda fixa (% a.a.)', min_value=0.0, max_value=100.0, step=0.5, format='%.1f', key='pb_taxa_juros')
+
+    st.markdown('---')
+    st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">PROJEÇÃO DE RECEITA</div>',
+                unsafe_allow_html=True)
+    st.number_input('Tarifa cobrada (R$/kWh)',              min_value=0.0, step=0.05, format='%.2f', key='pb_tarifa_kwh')
+    st.number_input('Tarifa início de recarga (R$/sessão)', min_value=0.0, step=0.50, format='%.2f', key='pb_tarifa_inicio')
+    st.number_input('kWh médio por sessão',                 min_value=0.1, step=0.5,  format='%.1f', key='pb_kwh_medio')
+    st.number_input('Duração média da sessão (min)',        min_value=1.0, max_value=480.0, step=5.0, format='%.0f', key='pb_dur_sessao')
+    st.markdown(f'<div style="font-size:0.70rem;color:#9CA3AF">Funcionamento: {horas_dia}h/dia (parâmetro global)</div>',
+                unsafe_allow_html=True)
+
+    st.markdown('---')
+    st.toggle('Visão portfólio (total de carregadores)', key='pb_portfolio')
+
+
+def render_payback(df_all=None, horas_dia=24, custo_kwh=0.75):
+    """Calculadora prospectiva de payback para investimento em carregadores EV."""
+    for k, v in _PB_DEFAULTS.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+    ss = st.session_state
+    n_carr        = int(ss['pb_n_carr'])
+    custo_hw      = float(ss['pb_custo_hw'])
+    custo_inst    = float(ss['pb_custo_inst'])
+    parcelado     = ss['pb_pagamento'] == '10x sem juros'
+    taxa_plat     = float(ss['pb_taxa_plat'])
+    fixo_plat     = float(ss['pb_fixo_plat'])
+    impostos_pct  = float(ss['pb_impostos'])
+    manutencao    = float(ss['pb_manutencao'])
+    split_pct     = float(ss['pb_split'])
+    depre_anos    = int(ss['pb_depre_anos'])
+    taxa_juros    = float(ss['pb_taxa_juros'])
+    tarifa_kwh    = float(ss['pb_tarifa_kwh'])
+    tarifa_inicio = float(ss['pb_tarifa_inicio'])
+    kwh_medio     = float(ss['pb_kwh_medio'])
+    dur_sessao    = float(ss['pb_dur_sessao'])
+    portfolio     = bool(ss['pb_portfolio'])
+    custo_kwh     = float(ss['pb_custo_kwh'])   # sobrescreve parâmetro global
+
+    inv_unit     = custo_hw + custo_inst
+    inv_total    = inv_unit * n_carr
+    depre_mensal = inv_total / max(depre_anos * 12, 1)
+    mult         = n_carr if portfolio else 1
+    inv_display  = inv_total if portfolio else inv_unit
+    # Instalação sempre à vista; hardware pode ser parcelado
+    hw_display   = (custo_hw   * n_carr) if portfolio else custo_hw
+    inst_display = (custo_inst * n_carr) if portfolio else custo_inst
+
+    # ── Dados reais ──────────────────────────────────────────────────────────────
+    occ_real   = None
+    banner_txt = None
+    if df_all is not None and len(df_all) > 0:
+        paid_df = df_all[df_all['paid']].copy()
+        for _c in ['Energia(kWh)', 'Receita(R$) por kWh', 'Receita(R$) por Início de Recarga', 'Valor Ociosidade']:
+            if _c not in paid_df.columns: paid_df[_c] = 0.0
+            paid_df[_c] = pd.to_numeric(paid_df[_c], errors='coerce').fillna(0)
+        col_est  = 'Estação' if 'Estação' in df_all.columns else ('Estacao' if 'Estacao' in df_all.columns else None)
+        n_stat   = max(df_all[col_est].nunique(), 1) if col_est else 1
+        days     = df_all['data'].nunique() or 1
+        min_used = df_all['duracao_min'].sum() if 'duracao_min' in df_all.columns else 0
+        min_avail = days * horas_dia * 60 * n_stat
+        occ_real  = min(min_used / min_avail * 100, 100) if min_avail > 0 else None
+        dt0 = df_all['data'].min().strftime('%d/%m/%y')
+        dt1 = df_all['data'].max().strftime('%d/%m/%y')
+        banner_txt = f"Usando dados de {len(paid_df):,} sessões pagas · {dt0} – {dt1}"
+
+    # ── Renda fixa: taxa mensal e histórico de referência ────────────────────────
+    _rf_m = (1 + taxa_juros / 100) ** (1 / 12) - 1  # taxa mensal equivalente
+
+    def _rf_hist(n_meses):
+        """Acumulado da renda fixa: mesma saída de caixa que o investimento."""
+        h = [0.0 if parcelado else -inv_display]
+        for m in range(1, n_meses + 1):
+            parc_rf = (inv_display / 10) if parcelado and m <= 10 else 0.0
+            h.append(h[-1] - parc_rf + inv_display * _rf_m * (m if parcelado else 1))
+        return h
+
+    # ── Cálculo de cenário ────────────────────────────────────────────────────────
+    def _calc(occ_pct):
+        sess     = (horas_dia * 30 * 60 / max(dur_sessao, 1)) * (occ_pct / 100)
+        kwh_m    = sess * kwh_medio
+        rec      = kwh_m * tarifa_kwh + sess * tarifa_inicio
+        ded_taxa = rec * taxa_plat / 100
+        ded_imp  = rec * impostos_pct / 100
+        ded_spl  = rec * split_pct / 100
+        ded_en   = kwh_m * custo_kwh
+        # DRE: EBITDA antes de impostos e D&A; impostos sempre calculados sobre receita bruta
+        ROL      = rec - ded_spl
+        LB       = ROL - ded_en
+        EBITDA   = LB - (ded_taxa + fixo_plat + manutencao)
+        DA       = depre_mensal / n_carr        # sempre por unidade; *mult no return dict
+        EBIT     = EBITDA - DA                  # pré-imposto; base para ROIC
+        LL       = EBIT - ded_imp               # lucro líquido por unidade
+        marg_u   = rec - ded_taxa - fixo_plat - ded_imp - ded_en - ded_spl - manutencao
+        # Retorno acumulado (base econômica, inclui depreciação):
+        # D0: instalação sempre à vista; parcelado financia só o hardware
+        hist     = [-inst_display if parcelado else -inv_display]
+        pb       = None
+        for mes in range(1, 241):
+            parc = (custo_hw / 10) * mult if parcelado and mes <= 10 else 0.0
+            hist.append(hist[-1] + LL * mult - parc)
+            if pb is None and hist[-1] >= 0:
+                pb = mes
+        return dict(
+            occ=occ_pct, rec=rec*mult, marg=marg_u*mult, pb=pb, hist=hist,
+            sess=sess*mult, kwh_m=kwh_m*mult,
+            ded_taxa=ded_taxa*mult, ded_imp=ded_imp*mult,
+            ded_spl=ded_spl*mult, ded_en=ded_en*mult,
+            man=manutencao*mult, fixo=fixo_plat*mult,
+            ROL=ROL*mult, LB=LB*mult, mg_bruta=(LB/ROL*100 if ROL else 0),
+            EBITDA=EBITDA*mult, mg_ebitda=(EBITDA/ROL*100 if ROL else 0),
+            DA=DA*mult, EBIT=EBIT*mult, LL=LL*mult,
+            mg_liq=(LL/ROL*100 if ROL else 0),
+            ROIC_aa=(EBIT*12/inv_display*100 if inv_display else 0),
+            parc=(custo_hw/10)*mult if parcelado else 0.0,
+        )
+
+    OCCS       = [10, 20, 40, 60]
+    OCC_LABELS = ['10% — conservador', '20% — moderado', '40% — otimista', '60% — agressivo']
+    OCC_COLORS = [COLORS[2], COLORS[3], COLORS[1], COLORS[0]]
+    scenarios  = [_calc(o) for o in OCCS]
+    if occ_real is not None:
+        scenarios.append(_calc(occ_real))
+        OCC_LABELS.append(f'{occ_real:.1f}% — real observado')
+        OCC_COLORS.append(COLORS[4])
+
+    # ── Banner ────────────────────────────────────────────────────────────────────
+    if banner_txt:
+        st.markdown(
+            f'<div style="background:#1A2640;border:1px solid #2D3340;border-radius:8px;'
+            f'padding:0.5rem 1rem;font-size:0.72rem;color:#9CA3AF;margin-bottom:1rem">'
+            f'&#128202; {banner_txt}</div>', unsafe_allow_html=True)
+
+    mode_lbl = "Portfólio total" if portfolio else "Por carregador"
+    section(f"Payback — Retorno sobre Investimento ({mode_lbl})")
+    if portfolio:
+        inv_info = (f'Investimento total: <span style="color:#F0F2F8;font-weight:700">R$ {inv_total:,.0f}</span> '
+                    f'({n_carr} carregador{"es" if n_carr>1 else ""} × R$ {inv_unit:,.0f})')
+    else:
+        inv_info = (f'Investimento unitário: <span style="color:#F0F2F8;font-weight:700">R$ {inv_unit:,.0f}</span>')
+    if parcelado:
+        inv_info += (f'  ·  HW 10× R$ {(hw_display/10):,.0f}'
+                     f'  +  inst. R$ {inst_display:,.0f} à vista')
+    st.markdown(f'<div style="font-size:0.78rem;color:#6B7280;margin-bottom:0.75rem">{inv_info}</div>',
+                unsafe_allow_html=True)
+
+    # ── Cards de cenário ──────────────────────────────────────────────────────────
+    cols = st.columns(len(scenarios))
+    for col, sc, lbl, clr in zip(cols, scenarios, OCC_LABELS, OCC_COLORS):
+        pb = sc['pb']
+        if pb is None:
+            pb_str    = '> 20 anos'
+            card_clr  = COLORS[2]
+        elif pb <= 36:
+            pb_str    = f'{pb}m  ({pb/12:.1f}a)'
+            card_clr  = COLORS[0]
+        elif pb <= 60:
+            pb_str    = f'{pb}m  ({pb/12:.1f}a)'
+            card_clr  = COLORS[3]
+        else:
+            pb_str    = f'{pb}m  ({pb/12:.1f}a)'
+            card_clr  = COLORS[2]
+        with col:
+            kpi_card(
+                f"Ocupação {lbl.split('—')[0].strip()}",
+                pb_str,
+                f"Rec R$ {sc['rec']:,.0f}/mês · Margem R$ {sc['marg']:,.0f}/mês",
+                card_clr,
+            )
+    st.markdown('<br>', unsafe_allow_html=True)
+
+    # ── Gráfico acumulado ─────────────────────────────────────────────────────────
+    section('Evolução do Retorno Acumulado')
+    max_pb   = max((sc['pb'] or 240) for sc in scenarios)
+    x_limit  = min(int(max_pb * 1.3) + 12, 240)
+    fig = go.Figure()
+    for sc, lbl, clr in zip(scenarios, OCC_LABELS, OCC_COLORS):
+        xs = list(range(min(len(sc['hist']), x_limit + 1)))
+        ys = sc['hist'][:x_limit + 1]
+        r, g, b = int(clr[1:3], 16), int(clr[3:5], 16), int(clr[5:7], 16)
+        is_real = 'real' in lbl
+        fig.add_trace(go.Scatter(
+            x=xs, y=ys,
+            name=lbl.split('—')[0].strip(),
+            mode='lines',
+            line=dict(color=clr, width=2, dash='dash' if is_real else 'solid'),
+            fillcolor=f'rgba({r},{g},{b},0.04)',
+        ))
+        if sc['pb'] and sc['pb'] <= x_limit:
+            fig.add_annotation(
+                x=sc['pb'], y=0, text=f"{sc['pb']}m",
+                showarrow=True, arrowhead=2, arrowsize=0.8,
+                arrowcolor=clr, font=dict(color=clr, size=14), ax=0, ay=-28,
+            )
+    # Renda fixa: ganho líquido = inv_display*(1+_rf_m)^m - inv_display
+    rf_ys = [inv_display * ((1 + _rf_m) ** m - 1) for m in range(x_limit + 1)]
+    fig.add_trace(go.Scatter(
+        x=list(range(x_limit + 1)), y=rf_ys,
+        name=f'Renda Fixa {taxa_juros:.1f}% a.a.',
+        mode='lines',
+        line=dict(color='#6B7280', width=1.5, dash='longdash'),
+    ))
+    fig.add_hline(y=0, line=dict(color='#3D4451', dash='dot', width=1))
+    fig.update_layout(**PLOTLY_LAYOUT, height=340)
+    fig.update_xaxes(title_text='Meses', gridcolor='#1E2330', linecolor='#1E2330')
+    fig.update_yaxes(tickprefix='R$ ', tickformat=',.0f', gridcolor='#1E2330', linecolor='#1E2330')
+    st.plotly_chart(fig, width='stretch')
+
+    # ── VPL & TIR ────────────────────────────────────────────────────────────────
+    # Horizonte de análise = vida útil do equipamento (depre_anos × 12 meses)
+    eol_m = depre_anos * 12
+
+    def _npv_sc(sc):
+        """VPL — traz cada FCL mensal a valor presente usando _rf_m como taxa de desconto.
+        CF_0 = -inst_display (parcelado, instalação à vista) ou -inv_display (à vista)."""
+        pv = -inst_display if parcelado else -inv_display
+        for m in range(1, eol_m + 1):
+            parc = sc['parc'] if parcelado and m <= 10 else 0.0
+            pv  += (sc['marg'] - parc) / (1 + _rf_m) ** m
+        return pv
+
+    def _irr_annual(sc):
+        """TIR — bissecção para encontrar a taxa mensal r tal que VPL(r)=0;
+        converte para taxa anual efetiva: (1+r_mensal)^12 - 1."""
+        cfs = [-inst_display if parcelado else -inv_display]
+        for m in range(1, eol_m + 1):
+            parc = sc['parc'] if parcelado and m <= 10 else 0.0
+            cfs.append(sc['marg'] - parc)
+        def _npv_r(r):
+            return sum(c / (1 + r) ** t for t, c in enumerate(cfs))
+        lo, hi = -0.9999, 10.0
+        try:
+            # Verifica se existe raiz real no intervalo
+            if _npv_r(lo) * _npv_r(hi) > 0:
+                return None
+            # Bissecção com convergência de 1e-9
+            for _ in range(200):
+                mid = (lo + hi) / 2
+                if abs(hi - lo) < 1e-9:
+                    break
+                if _npv_r(lo) * _npv_r(mid) <= 0:
+                    hi = mid
+                else:
+                    lo = mid
+            r_m = (lo + hi) / 2
+            return (1 + r_m) ** 12 - 1   # taxa anual efetiva
+        except Exception:
+            return None
+
+    with st.expander(f'VPL & TIR — Análise de Valor ({depre_anos} anos · TMA {taxa_juros:.1f}% a.a.)', expanded=False):
+        st.markdown(
+            f'<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.4rem">'
+            f'VPL — Valor Presente Líquido (taxa de desconto: {taxa_juros:.1f}% a.a.)</div>',
+            unsafe_allow_html=True)
+        _vpl_cols = st.columns(len(scenarios))
+        for _col, _sc, _lbl, _ in zip(_vpl_cols, scenarios, OCC_LABELS, OCC_COLORS):
+            _npv = _npv_sc(_sc)
+            _nc  = COLORS[0] if _npv >= 0 else COLORS[2]
+            with _col:
+                kpi_card(
+                    _lbl.split('—')[0].strip(),
+                    f'R$ {_npv:,.0f}',
+                    'VPL > 0 → cria valor' if _npv >= 0 else 'VPL < 0 → destrói valor',
+                    _nc,
+                )
+        st.markdown('<br>', unsafe_allow_html=True)
+
+        st.markdown(
+            f'<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.4rem">'
+            f'TIR — Taxa Interna de Retorno  ·  benchmark: Renda Fixa {taxa_juros:.1f}% a.a.</div>',
+            unsafe_allow_html=True)
+        _tir_cols = st.columns(len(scenarios))
+        for _col, _sc, _lbl in zip(_tir_cols, scenarios, OCC_LABELS):
+            _tir = _irr_annual(_sc)
+            if _tir is None:
+                _ts, _tc, _sub = 'N/D', COLORS[5], 'payback não atingido no período'
+            elif _tir * 100 > taxa_juros:
+                _ts  = f'{_tir*100:.1f}% a.a.'
+                _tc  = COLORS[0]
+                _sub = f'supera RF em {_tir*100 - taxa_juros:.1f}pp'
+            elif _tir > 0:
+                _ts  = f'{_tir*100:.1f}% a.a.'
+                _tc  = COLORS[3]
+                _sub = f'abaixo da RF em {taxa_juros - _tir*100:.1f}pp'
+            else:
+                _ts  = f'{_tir*100:.1f}% a.a.'
+                _tc  = COLORS[2]
+                _sub = 'retorno negativo no período'
+            with _col:
+                kpi_card(_lbl.split('—')[0].strip(), _ts, _sub, _tc)
+        st.markdown('<br>', unsafe_allow_html=True)
+
+        st.markdown(
+            '<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.4rem">'
+            'Fluxo de Caixa Livre — selecione o cenário</div>',
+            unsafe_allow_html=True)
+        _sc_dcf_lbl = st.selectbox('', OCC_LABELS, key='pb_sel_dcf', label_visibility='collapsed')
+        _sc_dcf = scenarios[OCC_LABELS.index(_sc_dcf_lbl)]
+        # D0: instalação à vista (parcelado) ou investimento total (à vista)
+        _d0      = -inst_display if parcelado else -inv_display
+        _mon_cf  = [_d0]
+        _mon_dcf = [_d0]    # D0 já está em valor presente
+        _xs      = [0]
+        for _m in range(1, eol_m + 1):
+            _par = _sc_dcf['parc'] if parcelado and _m <= 10 else 0.0
+            _cf  = _sc_dcf['marg'] - _par
+            _mon_cf.append(_cf)
+            _mon_dcf.append(_cf / (1 + _rf_m) ** _m)
+            _xs.append(_m)
+        _fig_dcf = go.Figure()
+        _fig_dcf.add_trace(go.Bar(
+            x=_xs, y=_mon_cf,
+            name='FCL nominal', marker_color='rgba(0,201,167,0.22)',
+        ))
+        _fig_dcf.add_trace(go.Bar(
+            x=_xs, y=_mon_dcf,
+            name='FCL descontado', marker_color='#00C9A7',
+        ))
+        _fig_dcf.add_hline(y=0, line=dict(color='#6B7280', dash='dot', width=1))
+        _fig_dcf.update_layout(**PLOTLY_LAYOUT, height=300, barmode='overlay',
+                               xaxis_title='Mês', yaxis_tickprefix='R$ ', yaxis_tickformat=',.0f')
+        st.plotly_chart(_fig_dcf, width='stretch')
+
+    # ── DRE padrão ouro ───────────────────────────────────────────────────────────
+    section('DRE — Demonstrativo de Resultado (Mensal)')
+    sel_lbl = st.selectbox('Cenário', OCC_LABELS, key='pb_sel_dre', label_visibility='collapsed')
+    sc  = scenarios[OCC_LABELS.index(sel_lbl)]
+    # (label, value, is_ded, is_tot, is_pct)
+    dre_rows = []
+    if split_pct > 0:
+        dre_rows.append(('Receita operacional bruta',     f"R$ {sc['rec']:,.2f}",           False, False, False))
+        dre_rows.append(('(−) Split estabelecimento',     f"(−) R$ {sc['ded_spl']:,.2f}",   True,  False, False))
+    dre_rows += [
+        ('ROL — Receita Operacional Líquida',     f"R$ {sc['ROL']:,.2f}",           False, True,  False),
+        ('(−) Custo energia (CPV)',                f"(−) R$ {sc['ded_en']:,.2f}",   True,  False, False),
+        ('(=) LUCRO BRUTO',                       f"R$ {sc['LB']:,.2f}",            False, True,  False),
+        ('    Margem Bruta',                      f"{sc['mg_bruta']:.1f}%",         False, False, True),
+        ('(−) Taxa plataforma',                   f"(−) R$ {sc['ded_taxa']:,.2f}",  True,  False, False),
+        ('(−) Custo fixo plataforma',             f"(−) R$ {sc['fixo']:,.2f}",      True,  False, False),
+        ('(−) Manutenção / operação',             f"(−) R$ {sc['man']:,.2f}",       True,  False, False),
+        ('(=) EBITDA',                            f"R$ {sc['EBITDA']:,.2f}",        False, True,  False),
+        ('    Margem EBITDA',                     f"{sc['mg_ebitda']:.1f}%",        False, False, True),
+        ('(−) Depreciação (D&A)',                 f"(−) R$ {sc['DA']:,.2f}",        True,  False, False),
+        ('(−) Impostos s/ receita bruta',         f"(−) R$ {sc['ded_imp']:,.2f}",   True,  False, False),
+        ('(=) LUCRO LÍQUIDO',                     f"R$ {sc['LL']:,.2f}",            False, True,  False),
+        ('    Margem Líquida',                    f"{sc['mg_liq']:.1f}%",           False, False, True),
+        ('    ROIC pré-tax (a.a.)',               f"{sc['ROIC_aa']:.1f}%",          False, False, True),
+    ]
+    if parcelado:
+        dre_rows.append(('    [memo] Parcela financ. (1–10)', f"(−) R$ {sc['parc']:,.2f}", True, False, False))
+
+    html = ('<div class="dre-t"><table style="width:100%;border-collapse:collapse">'
+            '<tr><th style="text-align:left;padding:6px 8px;font-size:0.72rem;color:#6B7280">Indicador</th>'
+            '<th style="text-align:right;padding:6px 8px;font-size:0.72rem;color:#6B7280">Valor/Mês</th></tr>')
+    for i, (lbl_r, val_r, is_ded, is_tot, is_pct) in enumerate(dre_rows):
+        bg  = 'rgba(0,201,167,0.06)' if is_tot else ('#181B23' if i % 2 else '#13161D')
+        lc  = '#00C9A7' if is_tot else ('#4B9EFF' if is_pct else ('#9CA3AF' if is_ded else '#F0F2F8'))
+        vc  = '#4B9EFF' if is_pct else ('#FF6B6B' if (is_ded and not is_tot) else ('#00C9A7' if is_tot else '#F0F2F8'))
+        fw  = '700' if is_tot else '400'
+        html += (f'<tr style="background:{bg}">'
+                 f'<td style="padding:5px 8px;font-size:0.72rem;color:{lc};font-weight:{fw}">{lbl_r}</td>'
+                 f'<td style="padding:5px 8px;font-size:0.72rem;color:{vc};text-align:right;font-weight:{fw}">{val_r}</td>'
+                 f'</tr>')
+    html += '</table></div>'
+    st.markdown(html, unsafe_allow_html=True)
+    st.markdown('<br>', unsafe_allow_html=True)
+
+    # ── Comparativo: Carregador vs Renda Fixa ─────────────────────────────────────
+    section(f'Comparativo: Carregador vs Renda Fixa ({taxa_juros:.1f}% a.a.)')
+    st.markdown(
+        '<div style="font-size:0.72rem;color:#6B7280;margin-bottom:0.75rem">'
+        '⚠️ Valores nominais (não descontados) ao final da vida útil.</div>',
+        unsafe_allow_html=True)
+    rf_eol    = inv_display * ((1 + _rf_m) ** eol_m - 1)
+    rf_mensal = inv_display * _rf_m
+
+    c_rf, c_oc, c_delta = st.columns(3)
+    with c_rf:
+        kpi_card(
+            f'Renda Fixa — {depre_anos} anos',
+            f'R$ {rf_eol:,.0f}',
+            f'Rendimento total · R$ {rf_mensal:,.0f}/mês equiv.',
+            COLORS[5],
+        )
+    best_sc  = max(scenarios, key=lambda s: s['hist'][min(eol_m, len(s['hist']) - 1)])
+    best_eol = best_sc['hist'][min(eol_m, len(best_sc['hist']) - 1)]
+    best_lbl = OCC_LABELS[scenarios.index(best_sc)].split('—')[0].strip()
+    with c_oc:
+        kpi_card(
+            f'Carregador ({best_lbl}) — {depre_anos} anos',
+            f'R$ {best_eol:,.0f}',
+            f'Retorno líquido acumulado em {depre_anos} anos',
+            COLORS[0] if best_eol > rf_eol else COLORS[2],
+        )
+    delta = best_eol - rf_eol
+    with c_delta:
+        kpi_card(
+            'Vantagem vs Renda Fixa',
+            f'{"+" if delta >= 0 else ""}R$ {delta:,.0f}',
+            f'{"Carregador supera RF" if delta >= 0 else "RF supera o carregador"} · cenário {best_lbl}',
+            COLORS[0] if delta >= 0 else COLORS[2],
+        )
+    st.markdown('<br>', unsafe_allow_html=True)
+
+    # tabela comparativa todos os cenários
+    _cmp_rows = []
+    for _sc, _lbl in zip(scenarios, OCC_LABELS):
+        _sc_eol = _sc['hist'][min(eol_m, len(_sc['hist']) - 1)]
+        _d      = _sc_eol - rf_eol
+        _cmp_rows.append({
+            'Cenário':                       _lbl,
+            f'Carregador {depre_anos}a (R$)': f'{_sc_eol:,.0f}',
+            f'Renda Fixa {depre_anos}a (R$)': f'{rf_eol:,.0f}',
+            'Diferença (R$)':               f'{"▲ " if _d >= 0 else "▼ "}{abs(_d):,.0f}',
+            'Melhor':                        '⚡ Carregador' if _d >= 0 else '📈 Renda Fixa',
+        })
+    st.dataframe(pd.DataFrame(_cmp_rows).set_index('Cenário'), use_container_width=True)
+    st.markdown('<br>', unsafe_allow_html=True)
+
+    # ── Sensibilidade ─────────────────────────────────────────────────────────────
+    section('Análise de Sensibilidade — Payback (meses)')
+    tarifas_s = [1.20, 1.50, 1.80, 2.10, 2.50]
+    occs_s    = [10, 20, 40, 60]
+
+    def _pb_sens(tar, occ_pct):
+        hm      = horas_dia * 30
+        dur_med = max(dur_sessao, 5)
+        sess    = (hm * 60 / dur_med) * (occ_pct / 100)
+        kwh_m   = sess * kwh_medio
+        rec     = kwh_m * tar + sess * tarifa_inicio
+        ded     = (rec * taxa_plat / 100 + fixo_plat + rec * impostos_pct / 100
+                   + kwh_m * custo_kwh + rec * split_pct / 100 + manutencao)
+        marg    = (rec - ded) * mult
+        if marg <= 0:
+            return None
+        acc = -inst_display if parcelado else -inv_display
+        for mes in range(1, 241):
+            parc = (custo_hw / 10) * mult if parcelado and mes <= 10 else 0.0
+            acc += marg - parc
+            if acc >= 0:
+                return mes
+        return None
+
+    sens_rows = {}
+    for tar in tarifas_s:
+        row = {}
+        for occ in occs_s:
+            v = _pb_sens(tar, occ)
+            row[f'{occ}%'] = v if v is not None else 999
+        sens_rows[f'R$ {tar:.2f}/kWh'] = row
+    df_sens = pd.DataFrame(sens_rows).T
+
+    def _color_pb(v):
+        if v >= 999:  return 'background-color:#3D1515;color:#FF6B6B'
+        if v <= 36:   return 'background-color:#0D2B1A;color:#00C9A7'
+        if v <= 60:   return 'background-color:#2B2510;color:#FFD93D'
+        return             'background-color:#2B1810;color:#FF6B6B'
+
+    styled = (df_sens.style
+              .map(_color_pb)
+              .format(lambda v: '> 20a' if v >= 999 else f'{int(v)}m'))
+    st.dataframe(styled, use_container_width=True)
+
+
+
 def render_dashboard(df, dfs, kpis, color, is_consolidated, custo_kwh, custo_pct, anon, horas_dia=24):
     """Renderiza todos os KPIs e graficos — identico para modo individual e consolidado."""
 
@@ -2016,6 +2530,11 @@ with st.sidebar:
         unsafe_allow_html=True
     )
 
+    st.radio(
+        'Página', ['📊 Dashboard', '⚡ Payback'],
+        key='nav_page', horizontal=True, label_visibility='collapsed',
+    )
+
     uploaded_files = st.file_uploader(
         "Carregar arquivos .xlsx", type=["xlsx"], accept_multiple_files=True,
         help="Arquivos de relatório de recargas no mesmo formato exportado pelo sistema."
@@ -2064,10 +2583,15 @@ with st.sidebar:
         if _force_anon:
             anon = True  # garante o valor mesmo com o toggle desabilitado
 
-    st.markdown("---")
-    st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">PARÂMETROS DE CUSTO</div>', unsafe_allow_html=True)
-    custo_kwh = st.number_input("Custo da energia (R$/kWh)", min_value=0.0, value=0.75, step=0.01, format="%.2f")
-    custo_pct  = st.number_input("Custo operacional (% da receita)", min_value=0.0, max_value=100.0, value=15.0, step=0.5, format="%.1f")
+    _pb_active = st.session_state.get('nav_page', '📊 Dashboard') == '⚡ Payback'
+    if not _pb_active:
+        st.markdown("---")
+        st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">PARÂMETROS DE CUSTO</div>', unsafe_allow_html=True)
+        custo_kwh = st.number_input("Custo da energia (R$/kWh)", min_value=0.0, value=0.75, step=0.01, format="%.2f")
+        custo_pct  = st.number_input("Custo operacional (% da receita)", min_value=0.0, max_value=100.0, value=15.0, step=0.5, format="%.1f")
+    else:
+        custo_kwh = float(st.session_state.get('pb_custo_kwh', 0.75))
+        custo_pct = 15.0
 
     st.markdown("---")
     st.markdown('<div style="font-size:0.75rem;color:#6B7280;margin-bottom:0.5rem">HORÁRIO DE FUNCIONAMENTO</div>', unsafe_allow_html=True)
@@ -2105,6 +2629,15 @@ st.markdown(
     '</div>',
     unsafe_allow_html=True
 )
+
+_is_payback = st.session_state.get('nav_page', '📊 Dashboard') == '⚡ Payback'
+
+# Payback sem dados: preenche sidebar e renderiza imediatamente
+if _is_payback and not uploaded_files and not _example_choices:
+    with _filtros_slot.container():
+        _render_payback_sidebar(horas_dia)
+    render_payback(df_all=None, horas_dia=horas_dia, custo_kwh=custo_kwh)
+    st.stop()
 
 if not uploaded_files and not _example_choices:
     st.markdown(
@@ -2161,6 +2694,13 @@ if anon:
     dfs = new_dfs
 
 df_all = pd.concat(dfs.values(), ignore_index=True)
+
+# Payback com dados carregados
+if _is_payback:
+    with _filtros_slot.container():
+        _render_payback_sidebar(horas_dia)
+    render_payback(df_all=df_all, horas_dia=horas_dia, custo_kwh=custo_kwh)
+    st.stop()
 
 # ─── FILTROS (CONECTOR + ESTAÇÃO) ────────────────────────────────────────────
 _col_conn = 'Conector(Tipo)' if 'Conector(Tipo)' in df_all.columns else None
